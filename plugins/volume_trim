@@ -1,0 +1,27 @@
+// Volume Trim
+//
+// Simple volume adjustment between -48 and +48 dBfs for
+// non-destructive edits or gain staging between plugins.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility gain volume trim
+//
+desc: Volume Trim
+
+slider1:0<-48,48,0.01> Trim dB
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  function decibelsToGain (decibels) ( 10 ^ (decibels / 20) );
+
+@slider
+  trim = decibelsToGain(slider1);
+
+@sample
+  spl0 *= trim;
+  spl1 *= trim;

@@ -1,1 +1,23 @@
+// DC Offset
+//
+// Adds a DC Offset (0 Hz non-moving frequency) to a signal.
+//
+// This will usually not be a desirable thing to do, but it
+// might help you with testing DC filters for functionality.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility dc offset
+//
+desc: DC Offset
 
+slider1:0<-1,1,0.01> DC Offset
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@sample
+  spl0 += slider1;
+  spl1 += slider1;

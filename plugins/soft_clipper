@@ -1,0 +1,52 @@
+// Soft Clipper
+//
+// Simple hyperbolic tangent based soft clipping, it's what some
+// would sell you as gentle tube distortion with warm harmonics.
+//
+// The closer the signal approaches 0 dBfs, the more it will be
+// pushed down and reduced. The signal will never go over 0 dBfs
+// however hard you push it. This is an instant effect, so there
+// are no attack or release times.
+//
+// This is not oversampled, i.e. it will create aliasing.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing gain amplitude clipper distortion saturation
+//
+desc: Soft Clipper
+
+slider1:0<-48, 0,0.01> Ceiling dBfs
+slider2:0<  0,48,0.01> Boost dB
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  function dBToGain (decibels) ( 10 ^ (decibels / 20) );
+  
+  function tanh (number)
+  (
+    expPos = exp(number);
+    expNeg = 1.0 / expPos; // exp(-number)
+    (expPos - expNeg) / (expPos + expNeg);
+  );
+  
+  function softclip (signal)
+  (
+    vCeiling = min(ceiling, 1.0);
+    vUpscale = gain / vCeiling;
+    
+    signal  = tanh(signal * vUpscale);
+    signal *= vCeiling;
+  );
+
+@slider
+  ceiling = dBToGain(slider1);
+  gain = dBToGain(slider2);
+
+@sample
+  spl0 = softclip(spl0);
+  spl1 = softclip(spl1);

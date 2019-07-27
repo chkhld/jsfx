@@ -1,0 +1,32 @@
+// Hard Clipper
+//
+// Simple hard clipping that will rigorously "chop off" any
+// signal peaks that shoot above the set ceiling.
+// 
+// This is not oversampled, i.e. it will create aliasing.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing gain amplitude clipper distortion saturation
+//
+desc: Hard Clipper
+
+slider1:0<-48, 0,0.01> Ceiling dBfs
+slider2:0<  0,48,0.01> Boost dB
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  function dBToGain (decibels) ( 10 ^ (decibels / 20) );
+  function clamp (signal) ( max(-ceiling, min(ceiling, signal)) );
+
+@slider
+  ceiling = dBToGain(slider1);
+  gain    = dBToGain(slider2);
+
+@sample
+  spl0 = clamp(spl0 * gain);
+  spl1 = clamp(spl1 * gain);

@@ -1,0 +1,50 @@
+// Foldback Distortion
+//
+// When the signal reaches the set ceiling or 0, it will be
+// "folded" into the opposite direction. Which means values
+// (ceiling + overshoot) will become (ceiling - overshoot).
+//
+// This will continue folding between ceiling and 0 until
+// no more overshoot is found, so it will grow rather CPU
+// demanding with increasing amounts of folds/distortion.
+//
+// This is not oversampled, i.e. it will create aliasing.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing distortion foldback
+//
+desc: Foldback Distortion
+
+slider1:0<-48, 0,0.01> Ceiling dBfs
+slider2:0<  0,48,0.01> Boost dB
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  function dBToGain (decibels) ( 10 ^ (decibels / 20) );
+  
+  function foldback (signal)
+  (
+    signum = sign(signal);
+    
+    while ((signal > ceiling) || (signal < 0))
+    (
+      signal < 0 ? signal = abs(signal);
+      
+      (signal > ceiling) ? signal = ceiling - (signal - ceiling);
+    );
+	
+    signal * signum;
+  );
+
+@slider
+  ceiling = dBToGain(slider1);
+  gain    = dBToGain(slider2);
+
+@sample
+  spl0 = foldback(spl0 * gain);
+  spl1 = foldback(spl1 * gain);
