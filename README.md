@@ -2,7 +2,7 @@
 A free collection of JS (JesuSonic) plugins for use in [Reaper](https://www.reaper.fm/).
 
 ## Included effects
-- [Correlation Meter](https://github.com/chkhld/jsfx/blob/master/plugins/correlation_meter.jsfx): Inspect your song's stereo phase balance and find mono-problematic areas by watching an indicator go red.
+- [Correlation Meter](https://github.com/chkhld/jsfx/blob/master/plugins/correlation_meter.jsfx): Inspect stereo phase balance and find mono-problematic areas by watching an indicator go red.
 - [DC Offset](https://github.com/chkhld/jsfx/blob/master/plugins/dc_offset.jsfx): Adds constant 0 Hz content and shifts waveforms up or down, probably only useful to test DC filters.
 - [Foldback Distortion](https://github.com/chkhld/jsfx/blob/master/plugins/foldback_distortion.jsfx): Folds waves between 0 and an adjustable ceiling, very harsh and nasty distortion.
 - [Hard Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/hard_clipper.jsfx): Simple and effective, chops away peaks above an adjustable ceiling volume, call it cold transistor distortion if you must.
