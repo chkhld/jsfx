@@ -19,8 +19,6 @@ _(There may be more in the future)_
 - If you don't know what to do with these files, watch the [Reaper Blog tutorial](https://reaperblog.net/2015/06/quick-tip-how-to-install-js-plugins/) on how to install JS plugins.
 
 ## Support
-This is just a fun project for me, I do this on the side to waste time, so don't expect too much of an effort. They're pretty basic processors anyway, shouldn't require a lot of maintenance.
-
-If you find any bugs, or if you have any suggestions for improvements, feel free to report them in the [issue tracker](https://github.com/chkhld/jsfx/issues), I'll have a look there every now and then.
+This is just a fun project for me, I do this on the side to waste time or template C++ code, so don't expect too much of an effort. But if you find any bugs, or if you have any suggestions for improvements, feel free to report them in the [issue tracker](https://github.com/chkhld/jsfx/issues), I'll have a look there every now and then.
 
 Have fun!
