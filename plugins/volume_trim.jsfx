@@ -17,10 +17,10 @@ out_pin:left output
 out_pin:right output
 
 @init
-  function decibelsToGain (decibels) ( 10 ^ (decibels / 20) );
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
 
 @slider
-  trim = decibelsToGain(slider1);
+  trim = dBToGain(slider1);
 
 @sample
   spl0 *= trim;
