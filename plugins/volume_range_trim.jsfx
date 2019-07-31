@@ -1,4 +1,4 @@
-// Volume Trim
+// Volume Range Trim
 //
 // Volume adjustment in a selectable +/- Decibel range for
 // more controlled automation moves.
@@ -18,12 +18,12 @@ out_pin:left output
 out_pin:right output
 
 @init
-  function decibelsToGain (decibels) ( 10 ^ (decibels / 20) );
-  function sliderToDecibels () (amount * (6 + ((range > 0) * 6) + ((range > 1) * 6) + ((range > 2) * 6)););
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function sliderTodB () (amount * (6 + ((range > 0) * 6) + ((range > 1) * 6) + ((range > 2) * 6)));
 
 @slider
-  decibels = sliderToDecibels();
-  trim = decibelsToGain(decibels);
+  decibels = sliderTodB();
+  trim = dBToGain(decibels);
 
 @sample
   spl0 *= trim;
