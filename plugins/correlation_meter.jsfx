@@ -207,7 +207,7 @@ out_pin:none
     gfx_lineto(centerX, gfx_h);
     
     // Only draw indicator bar if signal present
-    ((absMeanL > signalThreshold) || (absMeanR > signalThreshold)) ? 
+    ((abs(spl0) > signalThreshold) || (abs(spl1) > signalThreshold)) ? 
     (
       // Previous position -3
       (indicatorHistory2 != indicatorPosition) ?
