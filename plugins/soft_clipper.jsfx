@@ -4,7 +4,7 @@
 // would sell you as gentle tube distortion with warm harmonics.
 //
 // The closer the signal approaches 0 dBfs, the more it will be
-// pushed down and reduced. The signal will never go over 0 dBfs
+// pushed down and squashed. The signal will never reach 0 dBfs,
 // however hard you push it. This is an instant effect, so there
 // are no attack or release times.
 //
@@ -25,7 +25,7 @@ out_pin:left output
 out_pin:right output
 
 @init
-  function dBToGain (decibels) ( 10 ^ (decibels / 20) );
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
   
   function tanh (number)
   (
