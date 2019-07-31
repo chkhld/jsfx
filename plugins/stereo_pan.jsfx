@@ -1,0 +1,118 @@
+// Stereo Pan
+//
+// Implementation of various standard panning laws,
+// as well as some of my own customized types.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility pan panorama stereo channel
+//
+desc: Stereo Pan
+
+slider1:0<-100,100,0.001> Position [-L % R+]
+slider2:3<0,6,1{-3 dB Center,-4.5 Center,-5.4 dB Center custom near-constant power,-6 dB Center linear constant power,-6 dB Center constant power,-6 dB Center custom constant power,-7.6 dB Center custom}>Pan Law
+slider3:1<0,1,1{Off,On}>Volume Compensation
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  
+  quarterPi = 0.7853981634;
+  halfPi    = 1.5707963268;
+  
+  gainL = 1.0;
+  gainR = 1.0;
+  
+  compensation = 1.0;
+
+@slider
+  panPosition = (slider1 + 100) * 0.005;
+  
+  //
+  // -3 dB Center
+  //
+  slider2 == 0 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(3.0);
+    
+    gainL = cos(panPosition * halfPi) * compensation;
+    gainR = sin(panPosition * halfPi) * compensation;
+  );
+  
+  //
+  // -4.5 dB Center
+  //
+  slider2 == 1 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(4.5);
+    
+    gainL = pow(cos(panPosition * halfPi), 1.5) * compensation;
+    gainR = pow(sin(panPosition * halfPi), 1.5) * compensation;
+  );
+  
+  //
+  // -5.4 dB Center custom near-constant power
+  //
+  slider2 == 2 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(5.4);
+    
+    gainL = pow(tan((1.0 - panPosition) * quarterPi), 0.707) * compensation;
+    gainR = pow(tan(panPosition * quarterPi), 0.707) * compensation;
+  );
+  
+  //
+  // - 6 dB Center linear constant power
+  //
+  slider2 == 3 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(6.0);
+    
+    gainL = (1.0 - panPosition) * compensation;
+    gainR = panPosition * compensation;
+  );
+  
+  //
+  // -6 dB Center constant power
+  //
+  slider2 == 4 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(6.0);
+    
+    gainL = pow(cos(panPosition* halfPi), 2.0) * compensation;
+    gainR = pow(sin(panPosition* halfPi), 2.0) * compensation;
+  );
+  
+  //
+  // -6 dB Center custom constant power
+  //
+  slider2 == 5 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(6.0);
+    
+    panPolarity = sign(slider1);
+    absPosition = abs(slider1 * 0.04);
+    
+    curve = sqrt(0.25 * pow(absPosition, 3.0)) * 0.125;
+    
+    posCurve = 0.5 + curve;
+    negCurve = 0.5 - curve;
+    
+    gainL = (panPolarity == -1) ? posCurve : ((panPolarity == 1) ? negCurve : 0.5);
+    gainR = (panPolarity == -1) ? negCurve : ((panPolarity == 1) ? posCurve : 0.5);
+    
+    gainL *= compensation;
+    gainR *= compensation;
+  );
+  
+  //
+  // -7.6 dB Center custom
+  //
+  slider2 == 6 ? (
+    compensation = (slider3 == 0) ? 1.0 : dBToGain(7.6);
+    
+    gainL = tan((1.0 - panPosition) * quarterPi) * compensation;
+    gainR = tan(panPosition * quarterPi) * compensation;
+  );
+
+@sample
+  spl0 *= gainL;
+  spl1 *= gainR;
