@@ -18,9 +18,9 @@
 // and overall a lot more natural and organic than dumb
 // filtered white noise. However, they are unstable in
 // volume and stereo field, which adds to the naturally
-// chaotical sound.
+// chaotic sound but might not always be desirable.
 //
-// I tried to level them around 0 dBfs RMS.
+// I tried to level them all around 0 dBfs RMS.
 //
 // author: chokehold
 // url:    https://github.com/chkhld/jsfx/
@@ -28,7 +28,7 @@
 //
 desc: Interpolated Noise
 
-slider1:0<0,2,1{Linear,Cosine,Cubic}>Type
+slider1:0<0,2,1{Linear,Cosine,Cubic}> Type
 slider2:0<-144, 0,0.01> Level dBfs RMS
 
 in_pin:left input
@@ -75,8 +75,8 @@ out_pin:right output
   dcLastOutL = 0.0;
   dcLastOutR = 0.0;
 
-  function dBToGain (decibels) ( 10 ^ (decibels / 20) );
-  function clamp (number, low, high) ( max(low, min(high, number)) );
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function clamp (number, low, high) (max(low, min(high, number)));
   function random (limit) (rand(2.0 * limit) - limit);
   
   function linear ()
