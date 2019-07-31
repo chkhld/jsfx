@@ -30,7 +30,11 @@
 desc: Correlation Meter
 options: no_meter
 
-slider1:1.0<0.5,2.0,0.01> Speed
+// Making this a hidden parameter because it add
+// any worthwhile control or functionality. It's
+// still available as a parameter, so you could
+// turn it into a track control, if you must...
+slider1:1.0<0.5,2.0,0.01>-Speed
 
 in_pin:left input
 in_pin:right input
@@ -44,9 +48,8 @@ out_pin:none
   //
   signalThreshold = 0.0001;
   
-  // Sample history memory
+  // Sample memory
   history    = 2000;
-  historyTmp = 3000;
   
   // Sample history statistics and properties
   historyLength = 45; // Default: ~1ms Window at 44.1 kHz
@@ -96,7 +99,6 @@ out_pin:none
       historyScaler = fastReciprocal(historyLength); // 1.0/historyLength
       
       memset(history,    0.0, historyDouble);
-      memset(historyTmp, 0.0, historyDouble);
     );
   );
   
@@ -111,7 +113,7 @@ out_pin:none
     history[historyDouble-1] = newSampleR;
   );
   
-  // This will suck your CPU dry if it runs every.
+  // This will suck your CPU dry if it runs every
   // cycle, so that's why there's a countdown loop.
   // Recalculating everything once per Millisecond
   // is good enough for productive results, since
@@ -191,7 +193,7 @@ out_pin:none
   function drawGfx () local (halfWidth, centerX, lineX, indicatorHistory0, indicatorHistory1, indicatorHistory2)
   (
     gfx_mode  = 1; // additive
-    gfx_clear = 0;
+    gfx_clear = 6912;
     
     halfWidth = gfx_w/2;
     
@@ -208,67 +210,91 @@ out_pin:none
     ((absMeanL > signalThreshold) || (absMeanR > signalThreshold)) ? 
     (
       // Previous position -3
-      indicatorHistory2 >= 0.0 ? 
+      (indicatorHistory2 != indicatorPosition) ?
       (
-        gfx_set(1-indicatorHistory2, 1, 0, 0.04);
-      ):(
-        gfx_set(1, 1+indicatorHistory2, 0, 0.04);
+        indicatorHistory2 >= 0.0 ? 
+        (
+          gfx_set(1-indicatorHistory2, 1, 0, 0.02);
+        ):(
+          gfx_set(1, 1+indicatorHistory2, 0, 0.02);
+        );
+        
+        lineX = centerX + (indicatorHistory2 * halfWidth) - (7 * indicatorHistory2);
+        gfx_rect(lineX-8, 0, 16, gfx_h);
+        gfx_x = lineX-10;
+        gfx_y = 0;
+        gfx_blurto(lineX+10 ,gfx_h);
       );
-      
-      lineX = centerX + (indicatorHistory2 * halfWidth) - (7 * indicatorHistory2);
-      gfx_rect(lineX-7,0,14,gfx_h);
-      gfx_blurto(lineX-16,0);
       
       // Previous position -2
-      indicatorHistory1 >= 0.0 ? 
+      (indicatorHistory1 != indicatorPosition) ?
       (
-        gfx_set(1-indicatorHistory1, 1, 0, 0.065);
-      ):(
-        gfx_set(1, 1+indicatorHistory1, 0, 0.065);
+        indicatorHistory1 >= 0.0 ? 
+        (
+          gfx_set(1-indicatorHistory1, 1, 0, 0.05);
+        ):(
+          gfx_set(1, 1+indicatorHistory1, 0, 0.05);
+        );
+        
+        lineX = centerX + (indicatorHistory0 * halfWidth) - (5 * indicatorHistory0);
+        gfx_rect(lineX-7, 0, 14, gfx_h);
+        gfx_x = lineX-9;
+        gfx_y = 0;
+        gfx_blurto(lineX+9, gfx_h);
       );
-      
-      lineX = centerX + (indicatorHistory0 * halfWidth) - (5 * indicatorHistory0);
-      gfx_rect(lineX-5,0,10,gfx_h);
-      gfx_blurto(lineX-14,0);
       
       // Previous position -1
-      indicatorHistory0 >= 0.0 ? 
+      (indicatorHistory0 != indicatorPosition) ?
       (
-        gfx_set(1-indicatorHistory0, 1, 0, 0.080);
-      ):(
-        gfx_set(1, 1+indicatorHistory0, 0, 0.080);
+        indicatorHistory0 >= 0.0 ? 
+        (
+          gfx_set(1-indicatorHistory0, 1, 0, 0.1);
+        ):(
+          gfx_set(1, 1+indicatorHistory0, 0, 0.1);
+        );
+        
+        lineX = centerX + (indicatorHistory0 * halfWidth) - (4 * indicatorHistory0);
+        gfx_rect(lineX-6, 0, 12, gfx_h);
+        gfx_x = lineX-8;
+        gfx_y = 0;
+        gfx_blurto(lineX+8, gfx_h);
       );
-      
-      lineX = centerX + (indicatorHistory0 * halfWidth) - (4 * indicatorHistory0);
-      gfx_rect(lineX-4,0,8,gfx_h);
-      gfx_blurto(lineX-8,0);
       
       // Current position
       indicatorPosition >= 0.0 ? 
       ( // Fade between green and yellow
-        gfx_set(1-indicatorPosition, 1, 0, 0.85);
+        gfx_set(1-indicatorPosition, 1, 0, 0.75);
       ):(
         // Fade between yellow and red
-        gfx_set(1, 1+indicatorPosition, 0, 0.85);
+        gfx_set(1, 1+indicatorPosition, 0, 0.75);
       );
       
-      lineX = centerX + (indicatorPosition * halfWidth) - (5 * indicatorPosition) + 1;
-      gfx_rect(lineX-5,0,10,gfx_h);
+      lineX = centerX + (indicatorPosition * halfWidth) - (4 * indicatorPosition) + 1;
+      gfx_rect(lineX-5, 0, 10, gfx_h);
     );
     
-    // Colour white - opaque
-    gfx_set(1,1,1,1);
-    
-    // Paint scale numbers
+    // Paint white -1/+1 correlation numbers at top
+    gfx_set(1, 1, 1, 0.9);
+    gfx_y = 5;
     gfx_x = 10;
-    gfx_y = gfx_h - 12;
     gfx_drawnumber(-1,0);
     gfx_x = halfWidth-4;
     gfx_drawnumber(0,0);
-    gfx_x = gfx_w-25;
-    gfx_drawchar($'+');
-    gfx_x = gfx_w-15;
-    gfx_drawnumber(1,0);
+    gfx_x = gfx_w-24;
+    gfx_drawstr("+1");
+    
+    // Paint gray 0°-180° phase scale numbers at bottom.
+    // As they're flipped against usual phase scopes and
+    // not the prime intention of this plugin, they will
+    // be rendered slightly darker/more transparent.
+    gfx_set(1, 1, 1, 0.25);
+    gfx_y = gfx_h-12;
+    gfx_x = 10;
+    gfx_drawstr("180 deg");
+    gfx_x = halfWidth-22;
+    gfx_drawstr("90 deg");
+    gfx_x = gfx_w-48;
+    gfx_drawstr("0 deg");
     
     // Shuffle indicator position history -- don't scale these!
     indicatorHistory2 = indicatorHistory1;
@@ -296,5 +322,6 @@ out_pin:none
   // Raw correlation result slowed down for smooth display
   indicatorPosition = slowDown(correlation);
   
-@gfx 550 20
+@gfx 600 20
+
   drawGfx();
