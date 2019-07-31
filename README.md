@@ -15,7 +15,7 @@ A free collection of JS (JesuSonic) plugins for use in [Reaper](https://www.reap
 _(There may be more in the future)_
 
 ## Installation
-- The important stuff is in the [plugins](https://github.com/chkhld/jsfx/blob/master/plugins/) folder, so download what you want from there first, or just get the full release here.
+- The important stuff is in the [plugins](https://github.com/chkhld/jsfx/blob/master/plugins/) folder, so download what you want from there, or [get the full release here](https://github.com/chkhld/jsfx/releases/).
 - If you don't know what to do with these files, watch the [Reaper Blog tutorial](https://reaperblog.net/2015/06/quick-tip-how-to-install-js-plugins/) on how to install JS plugins.
 
 ## Support
