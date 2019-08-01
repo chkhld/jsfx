@@ -193,7 +193,7 @@ out_pin:none
   function drawGfx () local (halfWidth, centerX, lineX, indicatorHistory0, indicatorHistory1, indicatorHistory2)
   (
     gfx_mode  = 1; // additive
-    gfx_clear = 6912;
+    gfx_clear = 2816; // dark green background = 11 * 256
     
     halfWidth = gfx_w/2;
     
