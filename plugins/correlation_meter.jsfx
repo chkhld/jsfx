@@ -216,7 +216,7 @@ out_pin:none
         (
           gfx_set(1-indicatorHistory2, 1, 0, 0.02);
         ):(
-          gfx_set(1, 1+indicatorHistory2, 0, 0.02);
+          gfx_set(1, sqr(1+indicatorHistory2), 0, 0.02);
         );
         
         lineX = centerX + (indicatorHistory2 * halfWidth) - (7 * indicatorHistory2);
@@ -233,7 +233,7 @@ out_pin:none
         (
           gfx_set(1-indicatorHistory1, 1, 0, 0.05);
         ):(
-          gfx_set(1, 1+indicatorHistory1, 0, 0.05);
+          gfx_set(1, sqr(1+indicatorHistory1), 0, 0.05);
         );
         
         lineX = centerX + (indicatorHistory0 * halfWidth) - (5 * indicatorHistory0);
@@ -250,7 +250,7 @@ out_pin:none
         (
           gfx_set(1-indicatorHistory0, 1, 0, 0.1);
         ):(
-          gfx_set(1, 1+indicatorHistory0, 0, 0.1);
+          gfx_set(1, sqr(1+indicatorHistory0), 0, 0.1);
         );
         
         lineX = centerX + (indicatorHistory0 * halfWidth) - (4 * indicatorHistory0);
@@ -266,7 +266,7 @@ out_pin:none
         gfx_set(1-indicatorPosition, 1, 0, 0.75);
       ):(
         // Fade between yellow and red
-        gfx_set(1, 1+indicatorPosition, 0, 0.75);
+        gfx_set(1, sqr(1+indicatorPosition), 0, 0.75);
       );
       
       lineX = centerX + (indicatorPosition * halfWidth) - (4 * indicatorPosition) + 1;
