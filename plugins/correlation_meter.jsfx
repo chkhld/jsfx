@@ -190,10 +190,12 @@ out_pin:none
   
   // Draws the user interface
   //
-  function drawGfx () local (halfWidth, centerX, lineX, indicatorHistory0, indicatorHistory1, indicatorHistory2)
+  function drawGfx () local (halfWidth, centerX, lineX, indicatorHistory0, indicatorHistory1, indicatorHistory2, dim)
   (
+    dim = 0.175;
+    
     gfx_mode  = 1; // additive
-    gfx_clear = 2816; // dark green background = 11 * 256
+    gfx_clear = -1;
     
     halfWidth = gfx_w/2;
     
@@ -214,9 +216,9 @@ out_pin:none
       (
         indicatorHistory2 >= 0.0 ? 
         (
-          gfx_set(1-indicatorHistory2, 1, 0, 0.02);
+          gfx_set(1-indicatorHistory2, 1, 0, 0.25);
         ):(
-          gfx_set(1, sqr(1+indicatorHistory2), 0, 0.02);
+          gfx_set(1, sqr(1+indicatorHistory2), 0, 0.25);
         );
         
         lineX = centerX + (indicatorHistory2 * halfWidth) - (7 * indicatorHistory2);
@@ -231,9 +233,9 @@ out_pin:none
       (
         indicatorHistory1 >= 0.0 ? 
         (
-          gfx_set(1-indicatorHistory1, 1, 0, 0.05);
+          gfx_set(1-indicatorHistory1, 1, 0, 0.5);
         ):(
-          gfx_set(1, sqr(1+indicatorHistory1), 0, 0.05);
+          gfx_set(1, sqr(1+indicatorHistory1), 0, 0.5);
         );
         
         lineX = centerX + (indicatorHistory0 * halfWidth) - (5 * indicatorHistory0);
@@ -248,9 +250,9 @@ out_pin:none
       (
         indicatorHistory0 >= 0.0 ? 
         (
-          gfx_set(1-indicatorHistory0, 1, 0, 0.1);
+          gfx_set(1-indicatorHistory0, 1, 0, 0.75);
         ):(
-          gfx_set(1, sqr(1+indicatorHistory0), 0, 0.1);
+          gfx_set(1, sqr(1+indicatorHistory0), 0, 0.75);
         );
         
         lineX = centerX + (indicatorHistory0 * halfWidth) - (4 * indicatorHistory0);
@@ -260,13 +262,16 @@ out_pin:none
         gfx_blurto(lineX+8, gfx_h);
       );
       
+      // Dim background
+      gfx_muladdrect(0,0,gfx_w,gfx_h, dim, dim, dim);
+      
       // Current position
       indicatorPosition >= 0.0 ? 
       ( // Fade between green and yellow
-        gfx_set(1-indicatorPosition, 1, 0, 0.75);
+        gfx_set(1-indicatorPosition, 1, 0, 1.0);
       ):(
         // Fade between yellow and red
-        gfx_set(1, sqr(1+indicatorPosition), 0, 0.75);
+        gfx_set(1, sqr(1+indicatorPosition), 0, 1.0);
       );
       
       lineX = centerX + (indicatorPosition * halfWidth) - (4 * indicatorPosition) + 1;
