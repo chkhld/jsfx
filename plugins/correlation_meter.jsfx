@@ -98,14 +98,14 @@ out_pin:none
       historyDouble = historyLength * 2;
       historyScaler = fastReciprocal(historyLength); // 1.0/historyLength
       
-      memset(history,    0.0, historyDouble);
+      memset(history, 0.0, historyDouble);
     );
   );
   
   // Move everything in the history back one sample,
   // then import the latest incoming samples.
   //
-  function shuffle (newSampleL, newSampleR) local (position. previous)
+  function shuffle (newSampleL, newSampleR)
   (
     memcpy(history, history+1, historyDouble);
     
@@ -195,7 +195,7 @@ out_pin:none
     dim = 0.175;
     
     gfx_mode  = 1; // additive
-    gfx_clear = -1;
+    gfx_clear = 0; // black
     
     halfWidth = gfx_w/2;
     
@@ -216,9 +216,9 @@ out_pin:none
       (
         indicatorHistory2 >= 0.0 ? 
         (
-          gfx_set(1-indicatorHistory2, 1, 0, 0.25);
+          gfx_set(1-indicatorHistory2, 1, 0, 0.3);
         ):(
-          gfx_set(1, sqr(1+indicatorHistory2), 0, 0.25);
+          gfx_set(1, sqr(1+indicatorHistory2), 0, 0.3);
         );
         
         lineX = centerX + (indicatorHistory2 * halfWidth) - (7 * indicatorHistory2);
@@ -233,9 +233,9 @@ out_pin:none
       (
         indicatorHistory1 >= 0.0 ? 
         (
-          gfx_set(1-indicatorHistory1, 1, 0, 0.5);
+          gfx_set(1-indicatorHistory1, 1, 0, 0.6);
         ):(
-          gfx_set(1, sqr(1+indicatorHistory1), 0, 0.5);
+          gfx_set(1, sqr(1+indicatorHistory1), 0, 0.6);
         );
         
         lineX = centerX + (indicatorHistory0 * halfWidth) - (5 * indicatorHistory0);
@@ -250,9 +250,9 @@ out_pin:none
       (
         indicatorHistory0 >= 0.0 ? 
         (
-          gfx_set(1-indicatorHistory0, 1, 0, 0.75);
+          gfx_set(1-indicatorHistory0, 1, 0, 0.8);
         ):(
-          gfx_set(1, sqr(1+indicatorHistory0), 0, 0.75);
+          gfx_set(1, sqr(1+indicatorHistory0), 0, 0.8 );
         );
         
         lineX = centerX + (indicatorHistory0 * halfWidth) - (4 * indicatorHistory0);
