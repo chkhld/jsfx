@@ -6,12 +6,12 @@ A free collection of JS (JesuSonic) plugins for [Reaper](https://www.reaper.fm/)
 - [DC Offset](https://github.com/chkhld/jsfx/blob/master/plugins/dc_offset.jsfx): Adds constant 0 Hz content and shifts waveforms up or down, probably only useful to test DC filters.
 - [Foldback Distortion](https://github.com/chkhld/jsfx/blob/master/plugins/foldback_distortion.jsfx): Folds waves between 0 and an adjustable ceiling, very harsh and nasty distortion.
 - [Hard Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/hard_clipper.jsfx): Simple and effective, chops away peaks above an adjustable ceiling volume, call it cold transistor distortion if you must.
-- [Interpolated Noise](https://github.com/chkhld/jsfx/blob/master/plugins/interpolated_noise.jsfx): Various flavours of pleasingly natural and organically chaotic noise created by interpolation.
+- [Interpolated Noise](https://github.com/chkhld/jsfx/blob/master/plugins/interpolated_noise.jsfx): Various flavours of pleasingly natural and organically chaotic noise created with the help of various interpolation methods.
 - [Phase Scope](https://github.com/chkhld/jsfx/blob/master/plugins/phase_scope.jsfx): Visualizes the stereo field of a signal, also commonly known as Goniometer, Vector Scope or Lissajous Display.
 - [Soft Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/soft_clipper.jsfx): Increasingly lowers signal peaks the closer they get to an adjustable ceiling volume, call it warm tube overdrive if you must.
-- [Stereo Pan](https://github.com/chkhld/jsfx/blob/master/plugins/stereo_pan.jsfx): Balance your mix with various standardized pan laws, as well as some of my own custom methods.
-- [Volume Range Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_range_trim.jsfx): Fader to non-destrucively alter a signal's volume within a specific range (+/- 6, 12, 24, 48 dB) for more controlled automation.
-- [Volume Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_trim.jsfx): Simple fader to non-destructively alter a signal's volume between -48 dB and +48 dB, useful for gain-staging between plugins.
+- [Stereo Pan](https://github.com/chkhld/jsfx/blob/master/plugins/stereo_pan.jsfx): Utility that implements various standardized pan laws, as well as some custom methods by me.
+- [Volume Range Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_range_trim.jsfx): Fader to non-destrucively alter a signal's volume within a specific range (+/- 6, 12, 24, 48 dB), gives finer control when automating volume.
+- [Volume Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_trim.jsfx): Simple fader to alter a signal's volume, useful for gain-staging between plugins.
 
 _(There may be more in the future)_
 
