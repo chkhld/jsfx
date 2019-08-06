@@ -17,7 +17,7 @@ options:no_meter
 
 slider1:view=0<0,2,1{Dots,Lines,Rays}> Display
 slider2:glow=1<0,1,1{Off,On}> Glow
-slider3:axes=1<0,3,1{None,Left/Right,Left/Right + Decibels,Mid/Side,Mid/Side + Decibels,Left/Right + Mid/Side + Decibels}> Axes
+slider3:axes=1<0,3,1{None,Left/Right,Left/Right + Decibels,Mid/Side,Mid/Side + Decibels,Left/Right + Mid/Side + Decibels}> Indicators
 slider4:labels=1<0,1,1{Off,On}> Labels
 slider5:freeze=0<0,1,1{Off,On}> Freeze
 
