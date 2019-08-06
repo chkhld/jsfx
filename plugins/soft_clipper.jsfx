@@ -1,14 +1,66 @@
 // Soft Clipper
 //
-// Simple hyperbolic tangent based soft clipping, it's what some
-// would sell you as gentle tube distortion with warm harmonics.
+// Based on hyperbolic tangent clipping, it's what some would
+// sell you as gentle tube distortion with warm harmonics. :)
 //
-// The closer the signal approaches 0 dBfs, the more it will be
-// pushed down and squashed. The signal will never reach 0 dBfs,
-// however hard you push it. This is an instant effect, so there
-// are no attack or release times.
+// The basic idea is to have it both ways round: you can boost a
+// signal into the ceiling, or lower the ceiling onto the signal.
 //
-// This is not oversampled, i.e. it will create aliasing.
+// Either way, the closer the signal approaches the ceiling, the
+// more it will be pushed down and squashed. The signal will not
+// reach 0 dBfs (*) however hard you push it. This is an instant
+// effect, so there are no attack or release times.
+//
+// Since saturation and soft-clipping can introduce a DC offset,
+// there's an optional DC blocker included that can filter 0 Hz
+// frequency content.
+//
+// Saturation and soft-clipping can also introduce evil aliasing,
+// that's when newly generated harmonics are so high in frequency
+// that they shoot past 22 kHz and could not possibly be handled
+// anymore by the samplerate, so they "fold back" into the lower
+// part of the frequency spectrum where they can cause havoc and
+// destruction by becoming audible, sitting in unharmonic spaces
+// and even cancelling out signal that you actually want to hear.
+//
+// To battle this, I've built in a crude oversampling mechanism.
+// Pick an oversampling factor and a filtering intensity, that's
+// it. Bear in mind that oversampling adds new samples that were
+// not part of the signal before, so your CPU will have to munch
+// through exponentially more samples than without oversampling.
+// Higher oversampling amount = higher CPU load.
+// 
+// Processing more samples also means that the filtering that is
+// so essential to oversampling has to run through more samples,
+// which means that even the "relaxed" filtering intensity could
+// become quite heavy to handle at very high oversampling rates
+// on older or weaker machines.
+//
+// The trick is to find a balance between the oversampling ratio
+// and the filtering. Checking with just a sine wave, a ratio of
+// 8x and "normal" or "heavy" filtering would take care of just
+// about any aliasing here in my test setup. But obviously, real
+// music is immensely more complex than a mere sine wave, so you
+// might find that higher ratios or intensities work better in
+// your specific case/s, or that you can maybe get away with far
+// lower settings than me.
+//
+// (*) While the idea of a clipper is to, well, clip the tops off
+//     a signal at a fixed ceiling, unfortunately filtering will
+//     inherently come with an undesirable side-effect: it screws
+//     with the volume. So if you activate oversampling or the DC
+//     blocker, there will be no 0 dBfs ceiling "and not higher"
+//     guarantee anymore, i.e. a hot signal may still shoot above
+//     0 dBfs.
+//
+// To counter this, set the ceiling level low, so you hardly ever
+// see any spikes over 0 dBfs, then activate the hard clipper. As
+// the hard clipper is NOT oversampled, and located behind all of
+// the filters, it will always guarantee true 0 dBfs peak safety.
+//
+// However, it will also cause nasty aliasing and pretty quickly,
+// so make sure you don't boost into it too much. Unless you want
+// to, in that case go right ahead and knock yourself out. :)
 //
 // author: chokehold
 // url:    https://github.com/chkhld/jsfx/
@@ -16,8 +68,12 @@
 //
 desc: Soft Clipper
 
-slider1:0<-48, 0,0.01> Ceiling dBfs
-slider2:0<  0,48,0.01> Boost dB
+slider1:dBCeil=0<-48, 0,0.01> Ceiling dBfs
+slider2:dBGain=0<  0,48,0.01> Boost dBfs
+slider3:ovs=1<0,4,{Off,2x,4x,8x,16x}> Oversampling
+slider4:filter=1<0,3,{Relaxed,Normal,Heavy,Insane}> Filtering
+slider5:blocker=1<0,0,{Disabled,Enabled}> DC blocker
+slider6:hard=0<0,1,{Disabled,Enabled}> Hard clipping
 
 in_pin:left input
 in_pin:right input
@@ -25,8 +81,21 @@ out_pin:left output
 out_pin:right output
 
 @init
+  
+  // Buffer for upsampled samples
+  ups = 100000;
+  
+  // Order of up-/downsampling filters. These values should NOT
+  // be updated immediately after the setting changes on the UI,
+  // otherwise the filter parameters may change mid-processing,
+  // which could have nasty side-effects.
+  orderUp = 1;
+  orderDn = 1;
+  
+  // Decibel to gain factor conversion
   function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
   
+  // Hyperbolic tangent implementation, used for soft clipping.
   function tanh (number)
   (
     expPos = exp(number);
@@ -34,19 +103,208 @@ out_pin:right output
     (expPos - expNeg) / (expPos + expNeg);
   );
   
-  function softclip (signal)
+  // Soft clipping function with ceiling
+  function softclip ()
   (
-    vCeiling = min(ceiling, 1.0);
+    //  Tricky to do, because highest result of soft clipping
+    //  is always 1.0 (ceiling). To get a 'real' ceiling make
+    //  the input louder first, then clip the tops off, later
+    //  attenuate it again.
+    //
+    //  1) first get a ceiling <= 1.0
+    //  2) the amount of boost = 1 / ceiling --> 1 / 0.5 = 2
+    //  3) clip: input * boost
+    //  4) attenuate to ceiling level again
+    //
+    vCeiling = min(roof, 1.0);
     vUpscale = gain / vCeiling;
     
-    signal  = tanh(signal * vUpscale);
-    signal *= vCeiling;
+    this  = tanh(this * vUpscale);
+    this *= vCeiling;
   );
-
+  
+  // Clamping a.k.a. hard clipping,
+  // restricts samples to range [-1/+1]
+  function hardclip ()
+  (
+    this = max(-1, min(1, this))
+  );
+  
+  // DC Blocker to remove near-static frequency content
+  // that would otherwise "offset" the waveform.
+  function dcBlocker () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
+  );
+  
+  // Filter used for up- and downsampling
+  function bwLP (Hz, SR, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order;
+    stack = order; a1  = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order);
+    step = 0; while (step < order)
+    (
+      r   = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2  = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step]  = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + 2.0 * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  
+  // If the oversampling parameters were updated immediately when
+  // the sliders/dropdowns change, it may could cause undesirable
+  // side effects if happens in the middle of a calculation run.
+  // 
+  // Instead of altering the variables right away, check first if
+  // the new values have changed at all, and only trigger updates
+  // if that is the case. This saves CPU from calculating filter
+  // coefficients less frequently, and it guarantees that values
+  // will only change when this function is called, and only then.
+  //
+  function updateOversamplingX () local (newX, newUp, newDn)
+  (
+    // Calculate new values, "just in case" and to compare
+    newX = pow(2, ovs); // 0,1,2,3 -> 1,2,4,8
+    newUp = 2^(filter+1);
+    newDn = 2^(filter+2);
+    
+    // Check if the new values have in any way changed from the
+    // previous values, and only if that is the case...
+    ((newX != ovsX) || (newUp != orderUp) || (newDn != orderDn)) ? 
+    (
+      // Update the variables that are used in code with the new
+      // values, because when this function is called, it's safe
+      // to do so.
+      ovsX = newX;
+      orderUp = newUp;
+      orderDn = newDn;
+      
+      // Update the filter instances with the updated settings.
+      upFilterL.bwLP(22050, srate*ovsX, orderUp, 200000);
+      upFilterR.bwLP(22050, srate*ovsX, orderUp, 201000);
+      
+      dnFilterL.bwLP(22000, srate*ovsX, orderDn, 202000);
+      dnFilterR.bwLP(22000, srate*ovsX, orderDn, 203000);
+    );
+  );
+  
 @slider
-  ceiling = dBToGain(slider1);
-  gain = dBToGain(slider2);
-
+  
+  // Simple "slider dB value to gain factor" conversions
+  roof = dBToGain(dBCeil); // ceiling
+  gain = dBToGain(dBGain); // boost
+  
 @sample
-  spl0 = softclip(spl0);
-  spl1 = softclip(spl1);
+  
+  // Before any processing starts, check if new parameter values were
+  // set on the UI, and "import" them to their targets if so.
+  updateOversamplingX();
+  
+  // Do the following only if oversampling is happening.
+  ovsX > 1 ?
+  (
+    // Oversampling is achieved by stuffing an array of samples with
+    // zeroes, and then running a filter over them. By adding "dead"
+    // values to the signal and filtering it, the overall volume of
+    // the zero-stuffed signal will drop by half for every step. To
+    // counter this, it's enough to multiply the incoming sample by
+    // the oversampling factor before filtering, this will keep the
+    // signal level consistent.
+    spl0 = upFilterL.bwTick(spl0 * ovsX);
+    spl1 = upFilterR.bwTick(spl1 * ovsX);
+    
+    // After filtering the original input samples, it's time to also
+    // filter all the "dead" zero-value samples that are now part of
+    // the signal. This is necessary to keep filters' states in sync
+    // with what is going on, but unfortunately adds to the CPU load
+    // significantly. For every oversampling step, it's necessary to
+    // process one "dead" sample with the upsampling filter as well.
+    counter = 0;
+    while (counter < ovsX-1)
+    (
+      ups[counter]      = upFilterL.bwTick(0);
+      ups[counter+ovsX] = upFilterR.bwTick(0);
+      counter += 1;
+    );
+  );
+  
+  // Oversampled or not, this is the place where the magic happens,
+  // i.e. this is where the signal is clipped.
+  spl0.softclip();
+  spl1.softclip();
+  
+  // And yet another block of stuff that has to be processed when
+  // oversamplign is activated
+  ovsX > 1 ?
+  (
+    // Unfortunately, even though they'll be discarded without second
+    // thought later on, it's necessary to process the "dead" samples
+    // as well, just so the filters have signal to work on & can stay
+    // in sync with the rest of the process. Omitting this step would
+    // save CPU cycles, but it would not sound right. Sad.
+    counter = 0;
+    while (counter < ovsX-1)
+    (
+      orly1 = ups[counter];
+      orly1.softclip();
+      ups[counter] = orly1;
+      
+      orly2 = ups[counter+ovsX];
+      orly2.softclip();
+      ups[counter+ovsX] = orly2;
+      
+      counter += 1;
+    );
+    
+    // Filtering the actual signal samples that we really want to keep.
+    // These downsampling filters should be really steep, so that they
+    // cut away all the frequency content above 22 kHz that would fold
+    // into the audible signal and cause aliasing.
+    spl0 = dnFilterL.bwTick(spl0);
+    spl1 = dnFilterR.bwTick(spl1);
+    
+    // And yet another loop to let the downsampling filters process
+    // dead samples. Although these samples are practically irrelevant
+    // after this step, it's still necessary to run them through the
+    // filters so that they run at oversampled sample rate and so they
+    // are in the correct state for when the next real sample arrives.
+    counter = 0;
+    while (counter < ovsX-1)
+    (
+      ups[counter]      = dnFilterL.bwTick(ups[counter]);
+      ups[counter+ovsX] = dnFilterR.bwTick(ups[counter+ovsX]);
+      counter += 1;
+    );
+  );
+  
+  // If DC blocking enabled
+  blocker == 1 ?
+  (
+    // Run the DC blocker on each sample
+    spl0.dcBlocker();
+    spl1.dcBlocker();
+  );
+  
+  // If hard clipping is enabled
+  hard == 1 ?
+  (
+    // Hard-clip the output to avoid any distortion outside of this
+    // plugin. Careful, this is not oversampled, so once it clips,
+    // it will alias. Try to avoid using this, unless of course you
+    // want to.
+    spl0.hardclip();
+    spl1.hardclip();
+  );
