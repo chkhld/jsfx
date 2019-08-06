@@ -1,0 +1,470 @@
+// Signal Crusher
+//
+// A combination of everything "retro" to degrade a signal.
+//
+// Resampling and interpolation based reconstruction, with
+// filtering at various stages. Bit reduction from 24 down
+// to 0 bits, including the fitting dithering noise to go
+// with it.
+//
+// The dithering noise can be attenuated so that it doesn't
+// become too overwhelming or annoying, and there's an auto-
+// blanking feature that will turn off the noise while no
+// signal is currently running through the plugin.
+//
+// Note that the "Downsampled to" slider is NOT an actual
+// control, but just a display to let you know what sample
+// rate the downsampled signal is currently operating at.
+//
+// It may also be worth mentioning that the downsampling
+// and reconstruction filters are only active while the
+// related section is also operative. If downsampling or
+// reconstruction are set to "off", the filters won't do
+// anything.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing bit depth crusher resampling dither
+//
+desc: Signal Crusher
+
+slider1:down=1<0,4,{Off,Repeat samples,Drop samples,Linear interpolation,Cosine interpolation}> Downsampling
+slider2:dnFilt=1<0,2,{Off,Pre,Post}> Downsampling filter
+slider3:up=0<0,2,{Off,Linear interpolation,Cosine interpolation}> Reconstruction
+slider4:upFilt=0<0,2,{Off,Pre,Post}> Reconstruction filter
+slider5:ratio=20<32,1,1> Resampling factor [SR / x]
+slider6:outSR=0<0,0,0.01> Downsampled to [Hz]
+slider7:bits=10<0,24,0.001> Bit reduction
+slider8:dither=100<0,100,0.01> Bit dithering [%]
+slider9:blank=1<0,1,{Off,On}> Auto blanking
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  
+  // CLAMPING i.e. hard clipping
+  function clamp (ceiling)
+  (
+    this = max(-ceiling, min(ceiling, this));
+  );
+  
+  // SAMPLE RANDOMIZATION
+  //
+  // Returns a randomized sample value between [-limit,+limit]
+  // which can be used as basic white noise.
+  //
+  function random (limit) (rand() * 2.0 * limit - limit);
+  
+  // DITHERING NOISE
+  // 
+  // Creates unshaped/unfiltered white noise floor just as it
+  // would occur when reducing a signal's bit depth. This is
+  // done in a pretty simple way:
+  //
+  // - Create white noise at 0-bit level / 0 dBfs first
+  // - Calculate noise floor level gain at desired bits
+  // - Use the calculated gain to lower the noise floor
+  //
+  // Noise is just simple white noise, nothing special there.
+  // The gain to level the noise floor would usually be this:
+  //
+  //   gain = 1 / (1 << bits)
+  //
+  // The bit shift will however cast the resulting gain level
+  // to Integer, meaning it will only result in full numbers,
+  // not fractions in between. This in return means that the
+  // noise floor can only sit at fixed levels and at discrete
+  // steps, i.e. it does not scale down smoothly but jumps.
+  //
+  //   1 << 3   =  8
+  //   1 << 3.1 =  8
+  //   1 << 3.9 =  8
+  //   1 << 4   = 16
+  //
+  // Since shifting a number 1 bit to the left will basically
+  // multiply it by two, it's possible to calculate in powers
+  // of two instead. This removes the restriction of the full
+  // numbers, i.e. it's possible to smoothly fade the dither
+  // noise between full bits.
+  //
+  //   2 ^ 3   =  8
+  //   2 ^ 3.2 =  9.18958684
+  //   2 ^ 3.7 = 12.99603834
+  //   2 ^ 4   = 16
+  //
+  // The resulting value would be used to divide 1 in order
+  // to get a gain factor to multiply the noise with. Since
+  // multiplication of some value y with a second value 1/x
+  // are essentially just dividing y/x, the additional step
+  // of the multiplication can be omitted.
+  //
+  function ditherNoise (envelope)
+  (
+    this += envelope * ditherLevel * bitsLevel * random(1);
+  );
+  
+  // BIT REDUCTION
+  //
+  // Bits, in layman's terms, are "volume precision/range".
+  // The number of bits in a signal refers to just how much
+  // precision/range ever single sample value has available.
+  // 
+  // Bit reduction means taking bits away that samples would
+  // formerly store their values in.
+  // 
+  function bitReduce () instance () local ()
+  (
+    // If the absolute (=positive) value of this sample is
+    // lower than the lowest level of detail this bit depth
+    // can handle, then cruelly make it zero, which equals
+    // "losing" the sample to silence or the noise floor.
+    this = (abs(this) < bitsLevel) ? 0 : this;
+  );
+  
+  // Rudimentary envelope follower used for auto-blanking.
+  function envSetup (msAttack, msRelease) instance (envelope, attack, release) local ()
+  (
+    attack  = pow(0.01, 1.0 / ( msAttack * srate * 0.001 ));
+    release = pow(0.01, 1.0 / (msRelease * srate * 0.001 ));
+  );
+  
+  function envFollow (sample) instance () local (absolute)
+  (
+    absolute = abs(sample);
+    this.envelope = ((absolute > this.envelope) ? this.attack : this.release) * (this.envelope - absolute) + absolute;
+    this.envelope;
+  );
+  
+  // INTERPOLATION - LINEAR
+  // 
+  // Takes two values and an additional "where in between"
+  // argument, then figures out what value would lie at
+  // that specified "in between" position. Pretty simple.
+  //
+  function linearInterpolation (y1, y2, mu)
+  (
+    (y1 * (1.0 - mu) + y2 * mu);
+  );
+  
+  // INTERPOLATION - COSINE
+  // 
+  // Also takes two values and figures out an "in between"
+  // value, but uses a bit more refined method to do so.
+  //
+  function cosineInterpolation (y1, y2, mu) local (mu2)
+  (
+    mu2 = (1 - cos(mu * $PI)) * 0.5;
+    (y1 * (1 - mu2) + y2 * mu2);
+  );
+  
+  // DOWNSAMPLING PROCESS
+  //
+  // Downsampling will remove samples from a signal. Where
+  // there were formerly several samples, only one sample
+  // remains, which means the audio would get played back
+  // faster than before and pitched up. But it would also
+  // quickly run out of samples to play - and then what..?
+  //
+  // To let the downsampled audio still play back at its
+  // correct pitch, the removed samples are replaced with
+  // something different. This could be repetitions of the
+  // samples that are actually left in the signal, or just
+  // blank samples (=zeroes), or maybe they are reproduced
+  // with interpolation (=taking two samples and figuring
+  // out values at intermediate positions).
+  // 
+  // Stuffing the downsampled signal with more bew samples
+  // will bring it back to the original sample rate again,
+  // but at reduced precision i.e. sounding degraded.
+  // 
+  function downSample () instance (counterDS, lastStateDS, thisStateDS)
+  (
+    counterDS += 1;
+    
+    // Whenever the first sample in a chunk comes in, the
+    // "loop" doesn't have to run through all the checks
+    // below, because it's "the actual sample" which will
+    // be played back as it is, no matter what.
+    //
+    // When a new cycle starts...
+    (counterDS > ratio) || (counterDS == 1) ?
+    (
+      // Update the "previous sample" memory, this will be
+      // used for interpolation if selected.
+      lastStateDS = thisStateDS; 
+      
+      // Update the "current sample" memory, in step 1 of
+      // a cycle this will just be output without change,
+      // but in further steps of the cycle this value may
+      // be used again, e.g. when repeating samples or in
+      // interpolation calls.
+      thisStateDS = this;
+      
+      // Reset the chunk/loop counter to start over at 1.
+      counterDS = 1;
+    ):
+    // However, if this sample is not the first in a chunk,
+    // it will be one of the "dropped" ones that needs to
+    // be replaced with something different.
+    (
+      // If previous samples should be repeated
+      (down == 1) ?
+      (
+        // Make the current sample the value that is still
+        // stored in the "this sample" memory from step 1.
+        this = thisStateDS;
+      );
+      
+      // If intermediate samples should be dropped
+      (down == 2) ?
+      (
+        // Make the current sample zero
+        this = 0;
+      );
+      
+      // If this sample value should be created by linear
+      // interpolation between the "last sample" and "this
+      // sample" memory values
+      (down == 3) ?
+      (
+        // Do just that
+        this = linearInterpolation(lastStateDS, thisStateDS, counterDS / ratio);
+      );
+      
+      // If this sample value should be created by cosine
+      // interpolation between the "last sample" and "this
+      // sample" memory values
+      (down == 4) ?
+      (
+        // Do just that
+        this = cosineInterpolation(lastStateDS, thisStateDS, counterDS / ratio);
+      );
+    );
+    
+    // Finally, if intermediate samples were dropped for
+    // downsampling, then the signal has become quieter,
+    // so add some make-up gain back to the signal here.
+    (down == 2) ? this *= 1.0 + (down == 2) / ratio;
+  );
+  
+  // UPSAMPLING PROCESS
+  //
+  // Upsampling will take an existing signal and insert new
+  // sample values between the already existing samples in
+  // it. Since those values are not currently in the signal,
+  // interpolation is used to calculate intermediate samples
+  // by, well, guessing. Mathematically guessing, but still.
+  //
+  // This may already be happening at the downsampling stage,
+  // but if samples are replaced or dropped there, then this
+  // process will help bring some of them back, i.e. somewhat
+  // "reconstruct" the original signal. It will still not be
+  // back to normal or sound like the input, but may sound a
+  // little better than without reconstruction.
+  //
+  function upSample () instance (counterUS, lastStateUS, thisStateUS)
+  (
+    counterUS += 1;
+    
+    // If dealing with the first sample in a chunk, which
+    // will be passed out without any additional processing
+    (counterUS > ratio) || (counterUS == 1) ?
+    (
+      // This is the "previous sample" memory and used with
+      // interpolation methods. At this point, the memories
+      // are shifted, so this will get the value of what's
+      // currently the "current sample" memory.
+      lastStateUS = thisStateUS;
+      
+      // This is the "current sample" memory and used with
+      // interpolation methods. Since its current value is
+      // shifted into the "previous sample" memory, replace
+      // it with the value of the actually incoming sample.
+      thisStateUS = this;
+      
+      // Reset the chunk/loop counter to start over at 1.
+      counterUS   = 1;
+    ):
+    // If any other sample position in a chunk needs to be
+    // processed, i.e. the ones that were formerly removed
+    // or altered in the downsampling process
+    (
+      // Attempt reconstructing this intermediate sample
+      // with the selected interpolation method.
+      (up == 1) ? this = linearInterpolation(lastStateUS, thisStateUS, counterUS / ratio);
+      (up == 2) ? this = cosineInterpolation(lastStateUS, thisStateUS, counterUS / ratio);
+    );
+  );
+  
+  // Filter used in downsampling and reconstruction stages.
+  function bwLP (Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a     = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1    = tan($PI * (Hz / srate)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); step = 0;
+    while (step < order)
+    (
+      r   = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r;
+      s2  = a2 + ar2 + 1.0; rs2 = 1.0 / s2; a[step]  = a2 * rs2;
+      d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2;
+      step += 1;
+    );
+  );
+  
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + 2.0 * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  
+  // DC BLOCKING FILTER
+  //
+  // Resampling will cause aliasing, meaning frequencies above
+  // a certain point will start ping-pong reflecting around in
+  // the frequency spectum. Some frequencies might even become
+  // apparent in the sub 10 Hz range, worst case even 0 Hz.
+  //
+  // A 0 Hertz signal part essentially means the entire signal
+  // is shifted to the positive or negative by a constant value
+  // and such an offset is obviously not desirable, at least in
+  // this case, as it will further distort the signal.
+  //
+  function dcBlocker () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
+  );
+  
+  // Setting up the auto-blanking envelopes
+  evnAutoBlankL.envSetup(10, 300);
+  envAutoBlankR.envSetup(10, 300);
+
+@slider
+  
+  // The target sample rate after downsampling
+  outSR = srate / ratio;
+  
+  // If sliders move, make sure the various downsampling and
+  // upsampling memories are reset, in order to avoid clicks.
+  spl0.counterDS = spl0.stateDS = spl0.counterUS = spl0.lastStateUS = spl0.thisStateUS = 0;
+  spl1.counterDS = spl1.stateDS = spl1.counterUS = spl1.lastStateUS = spl1.thisStateUS = 0;
+  
+  // The lowest level the currently set bit precision can store.
+  // Anything beneath this level will be faded to silence/noise.
+  bitsLevel = 1.0 / (2.0 ^ bits);
+  
+  // The bitsLevel variable is already the correct level for
+  // the noise floor of the currently set bit depth at full
+  // volume. This variable is used to scale the amount of the
+  // dithering noise that is actually added to the signal.
+  ditherLevel = dither * 0.01;
+  
+  // Cutoff frequencies for the resampling filters. These need
+  // to be restricted to 20 kHz or things tend to go pop.
+  downFilterCutoff = min(outSR / 2, 20000);
+  upFilterCutoff   = min(outSR / 2,  20000);
+  
+  // Configuring the downsampling filters
+  lpDownL.bwLP(downFilterCutoff, 8, 101000);
+  lpDownR.bwLP(downFilterCutoff, 8, 102000);
+  
+  // Configuring the upsampling filters
+  lpUpL.bwLP(upFilterCutoff, 8, 103000);
+  lpUpR.bwLP(upFilterCutoff, 8, 104000);
+  
+@sample
+  
+  // First off, generate the auto-blanking envelope. If signal
+  // is present, make the envelope approach 1. If no signal is
+  // present, make the envelope approach 0. This value is used
+  // to lower or raise the volume of the dithering noise.
+  envAutoBlankL.envFollow(spl0 != 0);
+  envAutoBlankR.envFollow(spl1 != 0);
+  
+  // If downsampling should happen
+  (down > 0) ?
+  (
+    // If the PRE filter is selected
+    (dnFilt == 1) ?
+    (
+      // Process the filter
+      spl0 = lpDownL.bwTick(spl0);
+      spl1 = lpDownR.bwTick(spl1);
+    );
+    
+    // Do the actual downsampling (which includes upsampling
+    // back to project sample rate, necessarily).
+    spl0.downSample();
+    spl1.downSample();
+    
+    // If the POST filter is selected
+    (dnFilt == 2) ?
+    (
+      // Process the filter
+      spl0 = lpDownL.bwTick(spl0);
+      spl1 = lpDownR.bwTick(spl1);
+    );
+  );
+  
+  // If reconstruction should happen
+  (up > 0) ?
+  (
+    // If the PRE filter is selected
+    (upFilt == 1)?
+    (
+      // Process the filter
+      spl0 = lpUpL.bwTick(spl0);
+      spl1 = lpUpR.bwTick(spl1);
+    );
+    
+    // Attempt reconstruction by  interpolating in-between samples
+    spl0.upSample();
+    spl1.upSample();
+    
+    // If the POST filter is selected
+    (upFilt == 2)?
+    (
+      // Process the filter
+      spl0 = lpUpL.bwTick(spl0);
+      spl1 = lpUpR.bwTick(spl1);
+    );
+  );
+  
+  // If the target bit depth is set lower than 24 bits
+  (bits < 24) ? 
+  (
+    // Do the bit depth reduction first, i.e. lose number precision
+    spl0.bitReduce();
+    spl1.bitReduce();
+    
+    // Add dithering noise to the signal, levelled correctly
+    // for the selected bit depth. If auto-blanking is active,
+    // pass in the current signal envelope, otherwise just 1.
+    // If auto-blanking is enabled and the signal drops quiet,
+    // the dithering noise will also fade to silence. If auto-
+    // blanking is disabled, the dithering noise is constantly
+    // audible, even if the signal drops to silence.
+    spl0.ditherNoise((blank == 1) ? envAutoBlankL.envelope : 1);
+    spl1.ditherNoise((blank == 1) ? envAutoBlankR.envelope : 1);
+  );
+  
+  // Run a simple high-pass filter at a very low center
+  // frequency (around 10-20 Hertz) to remove DC content
+  // which would sit below there at ~ 0 Hertz.
+  spl0.dcBlocker();
+  spl1.dcBlocker();
+  
+  // Finally, just because, do hard clipping on the outputs
+  // to guarantee that no sample beyond -/+ 1.0 sneaks past.
+  spl0.clamp(1);
+  spl1.clamp(1);
