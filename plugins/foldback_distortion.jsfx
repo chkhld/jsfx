@@ -8,7 +8,14 @@
 // no more overshoot is found, so it will grow rather CPU
 // demanding with increasing amounts of folds/distortion.
 //
-// This is not oversampled, i.e. it will create aliasing.
+// This is not oversampled, i.e. it will create aliasing. I
+// tried adding oversampling to this, and all that happened
+// was that the distorted waveforms lost the new harmonics
+// and with every additional oversampling step, the output
+// gradually went back to its original form. So, kinda meh.
+//
+// But I added a DC blocker in, with all the aliasing can't
+// really hurt to have that around.
 //
 // author: chokehold
 // url:    https://github.com/chkhld/jsfx/
@@ -16,8 +23,9 @@
 //
 desc: Foldback Distortion
 
-slider1:0<-48, 0,0.01> Ceiling dBfs
-slider2:0<  0,48,0.01> Boost dB
+slider1:dBCeiling=0<-48, 0,0.01> Ceiling dBfs
+slider2:dBBoost=0<  0,48,0.01> Boost dB
+slider5:blocker=0<0,1,{Enabled,Disabled}> DC Blocker
 
 in_pin:left input
 in_pin:right input
@@ -25,26 +33,53 @@ out_pin:left output
 out_pin:right output
 
 @init
+  
+  // Decibel to gain factor conversion
   function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
   
-  function foldback (signal)
+  function foldback () instance (signum)
   (
-    signum = sign(signal);
+    signum = sign(this);
     
-    while ((signal > ceiling) || (signal < 0))
+    while ((this > ceiling) || (this < 0))
     (
-      signal < 0 ? signal = abs(signal);
+      this < 0 ? this = abs(this);
       
-      (signal > ceiling) ? signal = ceiling - (signal - ceiling);
+      (this > ceiling) ? this = ceiling - (this - ceiling);
     );
 	
-    signal * signum;
+    this *= signum;
+  );
+  
+  // DC Blocker to remove near-static frequency content
+  // that would otherwise "offset" the waveform.
+  function dcBlocker () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
   );
 
 @slider
-  ceiling = dBToGain(slider1);
-  gain    = dBToGain(slider2);
+
+  ceiling = dBToGain(dBCeiling);
+  gain    = dBToGain(dBBoost);
 
 @sample
-  spl0 = foldback(spl0 * gain);
-  spl1 = foldback(spl1 * gain);
+  
+  // Input boost
+  spl0 *= gain;
+  spl1 *= gain;
+  
+  // Finally, the actual processing
+  spl0.foldback();
+  spl1.foldback();
+  
+  // If DC blocking enabled
+  blocker == 0 ?
+  (
+    // Run the DC blocker on each sample
+    spl0.dcBlocker();
+    spl1.dcBlocker();
+  );
