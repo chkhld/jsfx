@@ -79,7 +79,7 @@
 //
 // author: chokehold
 // url:    https://github.com/chkhld/jsfx/
-// tags:   processing bit depth crusher resampling dither
+// tags:   processing gate expander dynamics
 //
 desc: Gate/Expander
 
