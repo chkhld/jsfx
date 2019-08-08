@@ -119,8 +119,8 @@ slider9:routing=0<0,3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),Mo
   // Simple envelope follower, setup stage
   function envSetup (msAttack, msRelease, dBThreshold, dBHysteresis) instance (envelope, attack, release, hysteresis, threshold) local ()
   (
-    attack  = pow(0.01, fastReciprocal( msAttack * msRate));
-    release = pow(0.01, fastReciprocal(msRelease * msRate));
+    attack  = exp(-1000 * fastReciprocal(msAttack  * srate));
+    release = exp(-1000 * fastReciprocal(msRelease * srate));
     hysteresis = dBToGain(dBHysteresis);
     threshold  = dBToGain(dBThreshold);
   );
