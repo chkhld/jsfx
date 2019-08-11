@@ -460,8 +460,9 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     spl0 = spl1 *= compR.compTick(abs(filterR.eqTick(spl0)));
   );  
   
-  // Saturation stage
-  saturation > 0 ?
+  // Saturation stage - but only if signal is coming in,
+  // kind of like dumb auto-blanking,
+  (saturation > 0) && (spl0 != 0) && (spl1 != 0) ?
   (
     spl0.saturate(compL.calc.makeup * 0.35);
     spl1.saturate(compR.calc.makeup * 0.35); 
