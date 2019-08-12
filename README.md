@@ -13,7 +13,7 @@ A free collection of JS (JesuSonic) plugins for [Reaper](https://www.reaper.fm/)
 - [Soft Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/soft_clipper.jsfx): Increasingly lowers signal peaks the closer they get to an adjustable ceiling volume, call it warm tube overdrive if you must. **NEW** Now with up to 16x oversampling, DC blocker and optional final hard clipping stage for true 0 dBfs output.
 - [Stereo Pan](https://github.com/chkhld/jsfx/blob/master/plugins/stereo_pan.jsfx): Utility that implements various standardized pan laws, as well as some custom methods by me.
 - [Track Comp](https://github.com/chkhld/jsfx/blob/master/plugins/track_comp.jsfx): A low-CPU and ultra-flexible compressor, with everything from peak/RMS detection over feed-forward/-back modes, stereo linking and channel setups to automatic gain compensation and attenuation-dependent saturation.
-- [Volume Range Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_range_trim.jsfx): Fader to non-destrucively alter a signal's volume within a specific range (+/- 6, 12, 24, 48 dB), gives finer control when automating volume.
+- [Volume Range Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_range_trim.jsfx): Fader to non-destructively alter a signal's volume within a specific range (+/- 6, 12, 24, 48 dB), gives finer control when automating volume.
 - [Volume Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_trim.jsfx): Simple fader to alter a signal's volume, useful for gain-staging between plugins.
 
 _(There may be more in the future)_
