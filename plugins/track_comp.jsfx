@@ -56,7 +56,7 @@
 // The saturation is dynamic and depends on the amount of gain reduction that is applied for each
 // compressor tick. So the more the signal is attenuated by the compressor, the higher saturation
 // coloration will be. The saturated sample is added on top of the dry sample at a percentage set
-// with the GUI Saturation parameter.
+// with the GUI Saturation parameter, so keep an eye on the output level.
 //
 // Finally, the Dry/Wet mix defines the balance of uncompressed and compressed signal. Blending
 // happens 100/0 - 50/50 - 0/100, so at the extreme values the signal will either be 100% dry (0%)
@@ -112,7 +112,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     (log(float) * M_LN10_20);
   );
   
-  // DC Blocker, removes static frequency (= 0Hz) content 
+  // DC Blocker to remove near-static frequency content
+  // that would otherwise "offset" the waveform.
   function dcBlocker () instance (stateIn, stateOut)
   (
     stateOut *= 0.99988487;
@@ -121,22 +122,32 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     this = stateOut;
   );
   
-  // Hyperbolic tangent implementation for soft clipping
-  function softclip (number) local (expPos, expNeg)
+  // Hyperbolic tangent approximation, used for soft clipping.
+  //
+  // Implemented after code posted by Antto on KVR
+  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function softclip (number) local (xa, x2, x3, x4, x7, res)
   (
-    expPos = exp( number);
-    expNeg = exp(-number);
-    (expPos - expNeg) / (expPos + expNeg);
+    xa = abs(number);
+    x2 = xa * xa;
+    x3 = x2 * xa;
+    x4 = x2 * x2;
+    x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    
+    sign(number) * res;
   );
   
   // SATURATION PROCESS
   //
   // Nothing special here, just adds a certain amount of soft
-  // clipped "tube drive" onto the signal.
+  // clipped "warm tube drive" (sigh) onto the signal.
   //
-  function saturate (drive)
+  function saturate (drive) local (boost)
   (
-    this += (satMix * softclip(this * (1.0 - drive)));
+    boost = 1.0 + (1.0 - drive);
+    this = (dryMix * this) + (satMix * softClip(this * boost));
   );
   
   // SIDECHAIN FILTER
@@ -233,7 +244,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     rmsEnv.envSetup(msWindow);
   );
   //
-  function rmsTick (sample) instance (rmsEnv, average, envelope) local ()
+  function rmsTick (sample) instance (rmsEnv, envelope) local ()
   (
     envelope = rmsEnv.envTick(sample * sample);
     sqrt(envelope);
@@ -359,8 +370,10 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   );
   
   // Set up the dynamic saturation envelope followers
-  satL.follow.envSetup(satSpeed);
-  satR.follow.envSetup(satSpeed);
+  satL.satSetup(satSpeed);
+  satR.satSetup(satSpeed);
+  
+  dcBlockerL = dcBlockerR = 0.0;
   
 @slider
   
@@ -385,6 +398,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   
   // The amount of saturation added to the signal
   satMix = saturation * 0.01;
+  dryMix = 1.0 - satMix;
   
   // The amount of dry and processed signal to blend
   wetDry = pctMix * 0.01;
@@ -399,6 +413,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // Dummy-assigning these here so that they exist
   // outside the scope of the if-blocks below.
   keyL = keyR = 0.0;
+  saturationL = saturationR = 0.0;
   
   // Input gain. Branching is slow, so it's faster to
   // just do this multiplication instead of running
@@ -434,6 +449,11 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     // then apply the resulting GR to the signal.
     spl0 *= compL.compTick(keyL);
     spl1 *= compR.compTick(keyR);
+    
+    // Send the compressor gain reduction values to the
+    // saturation envelope followers to slow them down.
+    saturationL = satL.satTick(compL.GR);
+    saturationR = satR.satTick(compR.GR);
   );
   
   // Stereo channels with external key/sidechain
@@ -461,6 +481,11 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     // then apply the resulting GR to the signal.
     spl0 *= compL.compTick(keyL);
     spl1 *= compR.compTick(keyR);
+    
+    // Send the compressor gain reduction values to the
+    // saturation envelope followers to slow them down.
+    saturationL = satL.satTick(compL.GR);
+    saturationR = satR.satTick(compR.GR);
   );
   
   // Mono L
@@ -471,6 +496,9 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     // Process L channel and pass its result through
     // to R channel
     spl1 = spl0 *= compL.compTick(abs(filterL.eqTick(spl0)));
+    
+    // Calculate saturation drive from compressor Gain Reduction
+    saturationR = saturationL = satL.satTick(compL.GR);
   );
   
   // Mono R
@@ -481,6 +509,9 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     // Process R channel and pass its result through
     // to L channel 
     spl0 = spl1 *= compR.compTick(abs(filterR.eqTick(spl1)));
+    
+    // Calculate saturation drive from compressor Gain Reduction
+    saturationL = saturationR = satR.satTick(compR.GR);
   );
   
   // Mono L <- R
@@ -490,6 +521,9 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     // Process L input channel using R input as key.
     // Duplicate result into output channel R.
     spl1 = spl0 *= compL.compTick(abs(filterL.eqTick(spl1)));
+    
+    // Calculate saturation drive from compressor Gain Reduction
+    saturationR = saturationL = satL.satTick(compL.GR);
   );
   
   // Mono L -> R
@@ -499,23 +533,19 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     // Process R input channel using L input as key.
     // Duplicate result into output channel L.
     spl0 = spl1 *= compR.compTick(abs(filterR.eqTick(spl0)));
+    
+    // Calculate saturation drive from compressor Gain Reduction
+    saturationL = saturationR = satR.satTick(compR.GR);
   );  
   
-  // Saturation stage - but only if signal is coming in,
-  // kind of like dumb auto-blanking. Will filter out any
-  // DC content added by the saturation just to be safe.
-  (saturation > 0) && ((spl0 != 0) || (spl1 != 0)) ?
+  // Saturation stage
+  (saturation > 0) ?
   (
-    // Send the compressor gain reduction values to the
-    // saturation envelope followers to slow them down.
-    saturationL = satL.follow.envTick(compL.GR);
-    saturationR = satR.follow.envTick(compR.GR);
-    
     // Add saturation to the samples
     spl0.saturate(saturationL);
     spl1.saturate(saturationR);
     
-    // Remove potential DC Offset
+    // Run the DC blocker on each sample
     spl0.dcBlocker();
     spl1.dcBlocker();
   );
