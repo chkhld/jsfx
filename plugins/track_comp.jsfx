@@ -55,8 +55,7 @@
 //
 // The saturation is dynamic and depends on the amount of gain reduction that is applied for each
 // compressor tick. So the more the signal is attenuated by the compressor, the higher saturation
-// coloration will be. The saturated sample is added on top of the dry sample at a percentage set
-// with the GUI Saturation parameter, so keep an eye on the output level.
+// coloration will be.
 //
 // Finally, the Dry/Wet mix defines the balance of uncompressed and compressed signal. Blending
 // happens 100/0 - 50/50 - 0/100, so at the extreme values the signal will either be 100% dry (0%)
