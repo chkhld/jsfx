@@ -95,12 +95,21 @@ out_pin:right output
   // Decibel to gain factor conversion
   function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
   
-  // Hyperbolic tangent implementation, used for soft clipping.
-  function tanh (number)
+  // Hyperbolic tangent approximation, used for soft clipping.
+  //
+  // Implemented after code posted by Antto on KVR
+  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function tanh (number) local (xa, x2, x3, x4, x7, res)
   (
-    expPos = exp(number);
-    expNeg = 1.0 / expPos; // exp(-number)
-    (expPos - expNeg) / (expPos + expNeg);
+    xa = abs(number);
+    x2 = xa * xa;
+    x3 = x2 * xa;
+    x4 = x2 * x2;
+    x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    
+    sign(number) * res;
   );
   
   // Soft clipping function with ceiling
@@ -165,7 +174,7 @@ out_pin:right output
   );
   
   // If the oversampling parameters were updated immediately when
-  // the sliders/dropdowns change, it may could cause undesirable
+  // the sliders/dropdowns change, that could cause undesirable
   // side effects if happens in the middle of a calculation run.
   // 
   // Instead of altering the variables right away, check first if
@@ -192,7 +201,12 @@ out_pin:right output
       orderUp = newUp;
       orderDn = newDn;
       
-      // Update the filter instances with the updated settings.
+      // Update the filter instances with the new settings.
+      // Since these operate at oversampled sample rate, it
+      // should be fine to have them set really high. In my
+      // tests these values worked fine, although a filter
+      // at 22 kHz needs to be REALLY steep to cut off all
+      // nasties above 22.05 kHz. :)
       upFilterL.bwLP(22050, srate*ovsX, orderUp, 200000);
       upFilterR.bwLP(22050, srate*ovsX, orderUp, 201000);
       
@@ -213,7 +227,7 @@ out_pin:right output
   // set on the UI, and "import" them to their targets if so.
   updateOversamplingX();
   
-  // Do the following only if oversampling is happening.
+  // Do the following only if oversampling is happening
   ovsX > 1 ?
   (
     // Oversampling is achieved by stuffing an array of samples with
@@ -232,6 +246,8 @@ out_pin:right output
     // with what is going on, but unfortunately adds to the CPU load
     // significantly. For every oversampling step, it's necessary to
     // process one "dead" sample with the upsampling filter as well.
+    // Minus one round, that is, since the filter already ran on the
+    // input sample.
     counter = 0;
     while (counter < ovsX-1)
     (
