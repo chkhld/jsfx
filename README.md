@@ -1,5 +1,6 @@
 # jsfx
 A free collection of JS (JesuSonic) plugins for [Reaper](https://www.reaper.fm/).
+See the source files for details and instructions.
 
 ## Included effects
 - [Correlation Meter](https://github.com/chkhld/jsfx/blob/master/plugins/correlation_meter.jsfx): Inspect your song's stereo phase balance and find mono-problematic areas by watching an indicator go red.
