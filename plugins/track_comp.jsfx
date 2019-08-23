@@ -4,26 +4,26 @@
 //
 // The idea was to make everything I care about in a compressor available in one plugin.
 //
-// It can switch between internal and external key signals (sidechain) that go into the detector.
+// It can switch between internal and external key/"sidechain" signals that go into the detector.
 // There are stereo setups as well as mono modes, two of them are designed to receive the actual
-// signal on one channel and the sidechain signal on the opposite channel.
+// signal on one channel and the key signal on the opposite channel.
 //
-// The detector mode can be faded between (modern) feed-forward and (classic) feed-back. FF at 0%
+// The detector mode can be faded between feed-forward (modern) and feed-back (classic). FF at 0%
 // will calculate a gain reduction factor for each sample independently. FB at 100% lets previous
 // GR from the former sample/s flow into new samples' GR. This makes the overall behaviour of the
 // compressor more stable and predictable, but also slower to respond to fast/large changes.
 //
 // There'e an RMS averager that will calculate the average sample value over a settable window of
-// time, setting it to 0 ms window will make the compressor respond to each peak sample directly.
+// time. Setting it to 0 ms window will make the compressor respond to each peak sample directly.
 // Similar to feedback topology, an increased RMS window will make the behaviour more predictable
 // and stable, but a smaller/no RMS window catches faster transients and attenuates more quickly.
 //
 // The "knee" refers to the point at which the compressor kicks in and starts compressing. "Hard
 // knee" means zero compression happens up to a certain point, and as soon as that point is hit,
 // the compression immediately kicks in at full amount. "Soft knee" means the ratio of compression
-// will start already below the set threshold at a softer amount, and increases gradually above
+// will start already below the set threshold at a low ratio amount, and increases gradually above
 // the cutoff point to reach its full ratio. This makes the transfer curve of the compression look
-// like a round curve rather than a hard fold, hence "soft".
+// like a round curve rather than a hard fold, hence "soft" knee.
 // 
 // A hard knee can be considered modern, digital, maybe a bit brutish, since it does nothing until
 // required, and then suddenly kicks in at full ratio. A soft knee can be considered maybe more
@@ -31,37 +31,37 @@
 // that already starts below the set threshold mark.
 //
 // The Range parameter controls the maximum amount of gain reduction to apply. If this is set to
-// -40 dB, the full range of, theoretically, up to -400 dB of Gain Reduction is applied if need be.
-// If the value is set lower, then only the specified gain reduction amount between 0 and -39.x dB
-// will be applied.
+// -40 dB, the range parameter is considered "off" and the full Gain Reduction range of up to -400
+// dB of Gain Reduction will be applied if need be. If this is set lower than -40 dB then only the
+// specified gain reduction amount between 0 and -40 dB will be applied.
 //
 // Stereo linking uses the averaged value of both sidechain (internal or external) channels for 
 // reference. At 0% there is no stereo linking, which means the compressor operates in dual mono
 // mode, this is good to get two independent signals levelled. At 100%, there is total linking,
-// which means that both channels will be compressed equally, this is good for things like grouped
-// drums with several kit elements spanning the entire stereo field.
+// which means that both key signals will evenly feed into the detector, so the signal will be
+// compressed equally on both channels. This is good for things like grouped drums with several
+// kit elements spanning the entire stereo field.
 //
 // There's a sidechain HP filter that will cut the lows off the detector signal, this is useful
 // to make the compressor respond less to bass-heavy signal parts like kick drums or distorted
-// guitar palm mutes and helps reduce pumping.
+// guitar palm mutes and helps reduce pumping. It is "always on" at 20 Hz, and thereby acts as
+// a DC blocker on the input signal, before any compression or saturation.
 //
 // Automatic Makeup Gain compensation will factor in an amount of post-compression gain increase.
 // The intention of this is to bring the volume of a signal that was attenuated with compression
 // back up to somewhere around where it used to be. This is done with a static formula, so there
-// can be settings where it results in an output either a lot louder or a lot quieter than the
-// input signal was, so be careful.
+// can be settings where it results in output either a lot louder or well quieter than the input
+// signal was, so it is not reliable, be careful. (This is genrally the case, not just in mine.)
 //
-// The saturation is not fully dynamic but depends on the amount of automatic makeup gain that
-// would be applied, even if auto-makeup isn't enabled. So the more the signal is attenuated by
-// compression, the more intense the saturation will become. The saturated sample is mixed with
-// the dry sample at the percentage set with the GUI Saturation parameter. So it's possible to
-// mix subtle saturation at subtle compression in but at a high amount, or to mix heavy saturation
-// at more heavy compression in at a lower amount.
+// The saturation is dynamic and depends on the amount of gain reduction that is applied for each
+// compressor tick. So the more the signal is attenuated by the compressor, the higher saturation
+// coloration will be. The saturated sample is added on top of the dry sample at a percentage set
+// with the GUI Saturation parameter.
 //
-// Finally, the Dry/Wet mix defines the percentages at which the unprocessed and processed signals
-// are blended together. The blending happens 100/0 - 50/50 - 0/100, so at the extreme values the
-// signal will either be 100% dry (0%) or 100% wet (100%), and in between there will be a balance
-// of both the dry input and the wet processed signal.
+// Finally, the Dry/Wet mix defines the balance of uncompressed and compressed signal. Blending
+// happens 100/0 - 50/50 - 0/100, so at the extreme values the signal will either be 100% dry (0%)
+// or 100% wet (100%). In between, there will be a mixture of both the unprocessed input and the
+// processed output.
 //
 // author: chokehold
 // url:    https://github.com/chkhld/jsfx/
@@ -99,6 +99,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   M_LN10_20 = 8.68588963806503655302257837833210164588794011607333;
   floatFloor = 0.0000000630957; // dBToGain --> ~ -144 dBfs
   halfPi = $PI * 0.5;
+  satSpeed = 50.0;  // ms timing for saturation envelope follower
   
   // Helper functions
   function dBToGain       (decibels) (10.0 ^ (decibels / 20.0));
@@ -111,16 +112,36 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     (log(float) * M_LN10_20);
   );
   
-  // Hyperbolic tangent approximation
-  function tanh (number) local (expPos, expNeg)
+  // DC Blocker, removes static frequency (= 0Hz) content 
+  function dcBlocker () instance (stateIn, stateOut)
   (
-    expPos = exp(number);
-    expNeg = fastReciprocal(expPos); // 1 / exp(-number)
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
+  );
+  
+  // Hyperbolic tangent implementation for soft clipping
+  function softclip (number) local (expPos, expNeg)
+  (
+    expPos = exp( number);
+    expNeg = exp(-number);
     (expPos - expNeg) / (expPos + expNeg);
+  );
+  
+  // SATURATION PROCESS
+  //
+  // Nothing special here, just adds a certain amount of soft
+  // clipped "tube drive" onto the signal.
+  //
+  function saturate (drive)
+  (
+    this += (satMix * softclip(this * (1.0 - drive)));
   );
   
   // SIDECHAIN FILTER
   //
+  // Simple Biquad High Pass filter used in the sidechain circuit.
   // Implemented after Andrew Simper's State Variable Filter paper.
   // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
   //
@@ -139,13 +160,6 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
   );
   
-  // SATURATION PROCESS
-  //
-  function saturate (drive)
-  (
-    this  = dryMix * this + satMix * tanh(this * drive * sqr(satMix));
-  );
-  
   // PRIMITIVE ENVELOPE FOLLOWER
   //
   // Follows the envelope of a signal at the speed set with the
@@ -162,12 +176,12 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // Range and Knee, I decided to not constantly convert the values
   // back and forth, but to just run the envelopes on dB values.
   //
-  // The sample should already be abs()-ed by here to positive dB.
+  // The sample should already be abs()-ed by here to dBfs.
   //
   // The envelope is NOT kept in this variable, but in the PARENT
   // variable containing this one. This is the case so one variable
-  // can hold one envelope value as well as two follower instances
-  // with different timings that can both work on the same state.
+  // could hold one envelope value, but two follower instances with
+  // different timings which could both work on the same envelope.
   //
   function envTick (dBsample) instance (coeff) local (active)
   (
@@ -178,44 +192,43 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // ATTACK / RELEASE ENVELOPE
   //
   // This will turn a variable into a full envelope container that
-  // holds an envelope state as well as two followers that will be
-  // used for the attack and release stages separately.
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release timings.
   //
-  function attRelSetup (msAttack, msRelease) instance (envAtt, envRel) local ()
+  function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
   (
-    // Set up the two envelope followers.
-    // One for attack, one for release.
-    envAtt.envSetup(msAttack);
-    envRel.envSetup(msRelease);
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 * fastReciprocal(msAttack  * srate));
+    coeffRel = exp(-1000 * fastReciprocal(msRelease * srate));
   );
   //
   // This calculates the new envelope state for the current sample.
   // If the current sample is above the current envelope state, let
-  // the attack envelope trigger. If the current sample is smaller
-  // than the current envelope state, let the release envelope run.
+  // the attack envelope run. And if the current sample is below the
+  // the current envelope state, then let the release envelope run.
   // 
-  // The sample should already be abs()-ed by here to positive dB.
+  // The sample should already be abs()-ed by here to dBfs
   //
-  function attRelTick (dBsample) instance (envelope, envAtt, envRel) local (above)
+  function attRelTick (dBsample) instance (envelope, coeffAtt, coeffRel) local (above, change)
   (
-    above = (dBsample > envelope);
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
     
-    // If above, get attack + if not above, get release
-    envelope = (above * envAtt.envTick(dBsample)) + (!above * envRel.envTick(dBsample));
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
   );
   
   // RMS AVERAGER
   //
-  // "Wraps" yet another envelope follower to create the RMS 
-  // averager. This is like a brake for incoming samples, so
-  // instead of shooting every incoming sample directly into
-  // the attack/release envelope detector, this will average
-  // the incoming values over a certain period of time, a so
-  // called "window". The length of the window is set in ms
-  // and defines over how long a time the incoming samples
-  // are smoothed.
+  // Turns a simple envelope follower into an RMS averager.
+  // This is like a brake for incoming samples, so instead of
+  // shooting every incoming sample directly into the envelope
+  // detector, this will average incoming values over a period
+  // of time, a so called "window". The length of the window is
+  // set in ms and defines over how much time the samples will
+  // be smoothed.
   //
-  function rmsSetup (msWindow) instance (rmsEnv, average) local ()
+  function rmsSetup (msWindow) instance (rmsEnv) local ()
   (
     rmsEnv.envSetup(msWindow);
   );
@@ -226,15 +239,29 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     sqrt(envelope);
   );
   
+  // SATURATION ENVELOPE FOLLOWER
+  //
+  // To make the saturation smoother, this envelope follower will
+  // will "slow down" the amount of saturation that is applied to
+  // the compressed signal.
+  //
+  function satSetup (msSpeed) instance (satEnv) local ()
+  (
+    satEnv.envSetup(msSpeed);
+  );
+  //
+  function satTick (sampleGR) instance (satEnv, envelope) local ()
+  (
+    envelope = satEnv.envTick(sampleGR);
+    envelope;
+  );
+  
   // GAIN CALCULATOR
   //
   // From all the various levels, this will calculate more
   // values required to calculate with later on. Included
-  // are hard/soft knee limits and the makeup gain.
-  //
-  // Automatically compensating the signal can be switched
-  // off, but makeup gain is still calculated because it's
-  // used as a factor in the saturation stage.
+  // are hard/soft knee limits and ratios, as well as the
+  // makeup gain amount.
   //
   // The formula to calculate the gain compensation value was
   // implemented after Tom Duffy at Tascam and Charles Hoffman
@@ -259,6 +286,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     dBReduction = dBsample;
     slope = 1.0 - ratio;
     
+    // If the signal is inside the confies of the set Soft Knee,
+    // calculate the appropriate "soft" reduction here.
     (knee > 0.0) && (dBsample > kneeLower) && (dBsample < kneeUpper) ?
     (
       slope *= ((dBsample - kneeLower) / knee) * 0.5;
@@ -267,6 +296,10 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
       dBReduction = min(0.0, slope * (threshold - dBsample));
     );
     
+    // Make sure the reduction is not higher than the specified
+    // range in Decibels. If set to -40 dB on the UI, the value
+    // of the range variable will be 0 here, so the calculated
+    // reduction amount will "win" and be used in full instead.
     dBToGain(max(dBReduction, range));
   );
   
@@ -291,18 +324,20 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   //
   function compTick (sample) instance (GR, feedback, rms, attRel, calc, autogain) local (feedbackFactor, keyGain, keyDecibels, gainAdjust)
   (
-    // The amount of previous GR to apply to this sample,
+    // The amount of previous GR to apply to this key sample,
     // this is essentially a 1-sample-delayed feedback.
     feedbackFactor = 1.0 - ((1.0 - GR) * feedback);
     
-    // The sidechain key sample value as a float gain factor
-    keyGain = abs(sample) * feedbackFactor;
+    // The sidechain key sample value as a float gain factor.
+    // Doesn't need to be made absolute, this already happens
+    // outside after filtering, when the linking is prepared.
+    keyGain = sample * feedbackFactor;
     
-    // If an RMS window is set up, run the key 
-    // sample through the RMS averager envelope.
+    // If an RMS window is set up, run the key  sample through
+    // the RMS averager envelope first.
     rms.rmsEnv.coeff > 0 ? keyGain = rms.rmsTick(keyGain);
     
-    // Turn the key sample into a dBfs value
+    // Turn the key sample [-1;1] into a dBfs value
     keyDecibels = gainTodB(keyGain);
     
     // Send the dBfs sample value into the attack/release
@@ -323,20 +358,24 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     GR * gainAdjust;
   );
   
+  // Set up the dynamic saturation envelope followers
+  satL.follow.envSetup(satSpeed);
+  satR.follow.envSetup(satSpeed);
+  
 @slider
   
-  // The maximum amount of gain reduction to apply.
+  // The maximum amount of gain reduction to apply
   maxRange = (compRange == -40) ? -400 : compRange;
   
-  // Prepares two compressor variables, one for each channel.
+  // Prepare two compressor instances, one for each channel.
   compL.compSetup(compAttack, compRelease, compWindow, compThresh, compRatio, compKnee, maxRange, compFeedbk, autoGain);
   compR.compSetup(compAttack, compRelease, compWindow, compThresh, compRatio, compKnee, maxRange, compFeedbk, autoGain);
 
-  // Calculates amount of stereo-linking in the key signal
+  // Calculate amount of stereo-linking in the key signal
   lnkMix = linkAmount * 0.01;
   splMix = 1.0 - lnkMix;
   
-  // Make the sidechain high-pass filters
+  // Configure the sidechain high-pass filters
   filterL.eqHP(scFreq, 1.5);
   filterR.eqHP(scFreq, 1.5);
   
@@ -344,17 +383,12 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   gainIn  = dBToGain(dBGain);
   gainOut = dBToGain(dBTrim);
   
-  // The amounts of saturated and un-saturated signal to mix
+  // The amount of saturation added to the signal
   satMix = saturation * 0.01;
-  dryMix = 1.0 - satMix;
   
-  // The amounts of dry and processed signal to blend
+  // The amount of dry and processed signal to blend
   wetDry = pctMix * 0.01;
   dryWet = 1.0 - wetDry;
-  
-@block
-  
-  
   
 @sample
   
@@ -363,18 +397,18 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   dryR = spl1;
   
   // Dummy-assigning these here so that they exist
-  // outside the scopy of the if-blocks below.
+  // outside the scope of the if-blocks below.
   keyL = keyR = 0.0;
   
   // Input gain. Branching is slow, so it's faster to
-  // just do this multicplication instead of running
+  // just do this multiplication instead of running
   // a check to see if it's needed, i.e. dBGain != 0
   spl0 *= gainIn;
   spl1 *= gainIn;
   
   // CHANNEL ROUTING MODES
   //
-  // Stereo channels with internal sidechain
+  // Stereo channels with internal key/sidechain
   routing == 0 ?
   (
     // Filter sidechain samples and make them positive
@@ -385,6 +419,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     (lnkMix > 0) ?
     (
       // If stereo-linked, take average of both channels
+      // at full volume, then scale to linking amount
       linked = sqrt(sqr(keyL) + sqr(keyR)) * lnkMix;
       
       keyL *= splMix;
@@ -401,7 +436,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     spl1 *= compR.compTick(keyR);
   );
   
-  // Stereo ext SC
+  // Stereo channels with external key/sidechain
   (routing == 1) ? 
   (
     // Filter sidechain samples and make them positive
@@ -429,6 +464,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   );
   
   // Mono L
+  // Ignores channel R input completely, only processes
+  // channel L and duplicates output to channel R
   routing == 2 ?
   (
     // Process L channel and pass its result through
@@ -437,6 +474,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   );
   
   // Mono R
+  // Ignores channel L input completely, only processes
+  // channel R and duplicates output to channel L
   routing == 3 ? 
   (
     // Process R channel and pass its result through
@@ -445,6 +484,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   );
   
   // Mono L <- R
+  // Mono signal on channel L, mono key/sidechain on channel R
   routing == 4 ?
   (
     // Process L input channel using R input as key.
@@ -453,6 +493,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   );
   
   // Mono L -> R
+  // Mono signal on channel R, mono key/sidechain on channel L
   routing == 5 ? 
   (
     // Process R input channel using L input as key.
@@ -461,11 +502,22 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   );  
   
   // Saturation stage - but only if signal is coming in,
-  // kind of like dumb auto-blanking,
-  (saturation > 0) && (spl0 != 0) && (spl1 != 0) ?
+  // kind of like dumb auto-blanking. Will filter out any
+  // DC content added by the saturation just to be safe.
+  (saturation > 0) && ((spl0 != 0) || (spl1 != 0)) ?
   (
-    spl0.saturate(compL.calc.makeup * 0.35);
-    spl1.saturate(compR.calc.makeup * 0.35); 
+    // Send the compressor gain reduction values to the
+    // saturation envelope followers to slow them down.
+    saturationL = satL.follow.envTick(compL.GR);
+    saturationR = satR.follow.envTick(compR.GR);
+    
+    // Add saturation to the samples
+    spl0.saturate(saturationL);
+    spl1.saturate(saturationR);
+    
+    // Remove potential DC Offset
+    spl0.dcBlocker();
+    spl1.dcBlocker();
   );
   
   // Output gain. Probably faster to just multiply
