@@ -1,0 +1,83 @@
+// M-S Fader
+//
+// Converts a stereo L/R input to a Mid/Side signal and then fades
+// between 100% Mid signal and 100% Side signal.
+//
+// If the fader is fully left at -100, then only the Mid signal is
+// sent to the output. If the fader sits fully right at +100, only
+// the side signal is sent to the output. If the fader is centered
+// at 0, the output is the sum of 100% Mid and 100% Side, i.e. the
+// unchanged input signal.
+//
+// You can use this to either cancel out the Mid signal (voices or
+// drums usually) or to do the exact opposite, i.e. cancel out the
+// stereo sides and focus in on the panorama center/mid signal.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility mid-side processing mono stereo
+//
+desc: M-S Fader
+
+slider1:balance=0<-100,100,0.01>Balance [M-MS-S]
+slider2:monofy=0<0,1,{Stereo,Mono}>Output width
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  
+  // Reciprocal constant 1.0 / sqrt(2.0)
+  rcpSqrt2 = 0.7071067812;
+  
+  // L/R and M/S conversion functions
+  //
+  function lrToM (sampleLeft, sampleRight) ((sampleLeft + sampleRight) * rcpSqrt2);
+  function lrToS (sampleLeft, sampleRight) ((sampleLeft - sampleRight) * rcpSqrt2);
+  function msToL (sampleMid,  sampleSide)  ((sampleMid  + sampleSide)  * rcpSqrt2);
+  function msToR (sampleMid,  sampleSide)  ((sampleMid  - sampleSide)  * rcpSqrt2);
+
+@slider
+  
+  // Default to mix of 100% Mid + 100% Side
+  gainMid  = 100;
+  gainSide = 100;
+  
+  // If fade towards Side signal
+  balance > 0 ?
+  (
+    gainMid  = 100 - balance;
+    gainSide = 100;
+  ):
+  // If fade towards Mid signal
+  balance < 0 ?
+  (
+    gainMid  = 100;
+    gainSide = 100 + balance;
+  );
+  
+  // Convert % to float gain
+  gainMid  *= 0.01;
+  gainSide *= 0.01;
+
+@sample
+  
+  // Convert L/R samples to M/S samples
+  splMid  = lrToM(spl0, spl1);
+  splSide = lrToS(spl0, spl1);
+  
+  // Adjust gain balance of M/S samples
+  splMid  *= gainMid;
+  splSide *= gainSide;
+  
+  // Convert M/S samples back to L/R samples
+  spl0 = msToL(splMid, splSide);
+  spl1 = msToR(splMid, splSide);
+  
+  // If output should be summed to mono/0% width
+  monofy == 1 ?
+  (
+    spl1 = spl0 = ((spl0 - spl1) + (spl0 + spl1)) * 0.5;
+  );
