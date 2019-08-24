@@ -6,6 +6,7 @@ See the source files for details and instructions.
 ## Included effects
 - [Correlation Meter](https://github.com/chkhld/jsfx/blob/master/plugins/correlation_meter.jsfx): Inspect your song's stereo phase balance and find mono-problematic areas by watching an indicator go red.
 - [DC Offset](https://github.com/chkhld/jsfx/blob/master/plugins/dc_offset.jsfx): Adds constant 0 Hz content and shifts waveforms up or down, probably only useful to test DC filters.
+- [Filthy Delay](https://github.com/chkhld/jsfx/blob/master/plugins/filthy_delay.jsfx): Stereo delay with multiple routings (stereo, inverted, ping-pong, more to come), plus optional filters and boostable saturation in the feedback path.
 - [Foldback Distortion](https://github.com/chkhld/jsfx/blob/master/plugins/foldback_distortion.jsfx): Folds waves between 0 and an adjustable ceiling, very harsh and nasty distortion.
 - [Gate/Expander](https://github.com/chkhld/jsfx/blob/master/plugins/gate_expander.jsfx): Several channel routings, external sidechain, sidechain filter, fadeable stereo linking, hysteresis, and it can be switched between gate (fades to silence) and expander (fades to defined volume) modes.
 - [Hard Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/hard_clipper.jsfx): Simple and effective, chops away peaks above an adjustable ceiling volume, call it cold transistor distortion if you must.
