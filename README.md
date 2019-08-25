@@ -4,7 +4,7 @@ A free collection of JS (JesuSonic) plugins for [Reaper](https://www.reaper.fm/)
 See the source files for details and instructions.
 
 ## Included effects
-- [Bus Comp](https://github.com/chkhld/jsfx/blob/master/plugins/bus_comp.jsfx): Submix bus oriented compressor with automatic/program-dependent release, fadeable stereo linking, external sidechain input with high pass filter, instability noise, optional hard clipping and dry/wet mix for parallel compression.
+- [Bus Comp](https://github.com/chkhld/jsfx/blob/master/plugins/bus_comp.jsfx): Submix bus oriented compressor with automatic/program-dependent release, fadeable stereo linking, external sidechain input with high pass filter, instability noise, hard clipping and dry/wet mix for parallel compression.
 - [Correlation Meter](https://github.com/chkhld/jsfx/blob/master/plugins/correlation_meter.jsfx): Inspect your song's stereo phase balance and find mono-problematic areas by watching an indicator go red.
 - [DC Offset](https://github.com/chkhld/jsfx/blob/master/plugins/dc_offset.jsfx): Adds constant 0 Hz content and shifts waveforms up or down, probably only useful to test DC filters.
 - [Filthy Delay](https://github.com/chkhld/jsfx/blob/master/plugins/filthy_delay.jsfx): Stereo delay with multiple routings (stereo, inverted, ping-pong, more to come), plus optional filters and boostable saturation in the feedback path.
