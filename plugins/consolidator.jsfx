@@ -34,9 +34,10 @@ desc: Consolidator
 slider1:operation=2<0, 2, {Gentle,Dynamic,Hard}>Operation
 slider2:dBGain=0<0, 24, 0.01>Input boost [dB]
 slider3:scFreq=75<20, 500, 1>SC high pass [Hz]
-slider4:linkAmount=0<0, 100, 1>Stereo link [%]
-slider5:dBTrim=0<-12, 12, 0.01>Makeup gain [dB]
-slider6:pctMix=100<0,100,0.01>Dry/wet mix [%]
+slider4:midSide=0<0,1,{Stereo (L+R),Mid/Side (M+S)}>Channel routing
+slider5:linkAmount=0<0, 100, 1>Stereo link [%]
+slider6:dBTrim=0<-12, 12, 0.01>Makeup gain [dB]
+slider7:pctMix=100<0,100,0.01>Dry/wet mix [%]
 
 in_pin:Input L
 in_pin:Input R
@@ -49,6 +50,7 @@ out_pin:Output R
   M_LN10_20 = 8.68588963806503655302257837833210164588794011607333;
   floatFloor = 0.0000000630957;  // dBToGain --> ~ -144 dBfs
   halfPi = $PI * 0.5;
+  rcpSqrt2 = 0.7071067812; // Reciprocal constant 1.0 / sqrt(2.0)
   
   // Converts dB values to float gain factors
   function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
@@ -61,6 +63,13 @@ out_pin:Output R
     float = below * floatFloor + (!below) * float;
     (log(float) * M_LN10_20);
   );
+  
+  // Stereo L+R and Mid/Side M+S conversion functions
+  //
+  function lrToM (sampleLeft, sampleRight) ((sampleLeft + sampleRight) * rcpSqrt2);
+  function lrToS (sampleLeft, sampleRight) ((sampleLeft - sampleRight) * rcpSqrt2);
+  function msToL (sampleMid,  sampleSide)  ((sampleMid  + sampleSide)  * rcpSqrt2);
+  function msToR (sampleMid,  sampleSide)  ((sampleMid  - sampleSide)  * rcpSqrt2);
   
   // Accelerated 1/value calculation
   function fastReciprocal (value) (sqr(invsqrt(value))); 
@@ -294,6 +303,20 @@ out_pin:Output R
   spl0 *= gainIn;
   spl1 *= gainIn;
   
+  // If Mid/Side mode is set, convert L+R samples to M+S.
+  // This will turn the left sample into the mid sample,
+  // and the right sample into the side sample.
+  midSide == 1 ?
+  (
+    // Can mis-use these as buffers here, since they're
+    // not yet required by other parts of the process.
+    keyL = lrToM(spl0, spl1);
+    keyR = lrToS(spl0, spl1);
+    
+    spl0 = keyL;
+    spl1 = keyR;
+  );
+  
   //
   // COMPRESSOR STAGE #1
   //
@@ -386,6 +409,19 @@ out_pin:Output R
   // Run the comp calculations and apply gain reduction
   spl0 *= comp3L.compTick(keyL);
   spl1 *= comp3R.compTick(keyR);
+  
+  // If Mid/Side processing is selected
+  midSide == 1 ?
+  (
+    // Can mis-use these as buffers here, since they're
+    // no longer required by other parts of the process.
+    keyL = spl0;
+    keyR = spl1;
+    
+    // Convert the M+S samples back to L+R samples
+    spl0 = msToL(keyL, keyR);
+    spl1 = msToR(keyL, keyR);
+  );
   
   // Makeup gain. Probably faster to just multiply than
   // doing conditional branching.
