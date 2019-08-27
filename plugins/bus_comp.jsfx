@@ -501,8 +501,13 @@ out_pin:Output R
   // and the right sample into the side sample.
   midSide == 1 ?
   (
-    spl0 = lrToM(dryL, dryR);
-    spl1 = lrToS(dryL, dryR);
+    // Can mis-use these as buffers here, since they're
+    // not yet required by other parts of the process.
+    keyL = lrToM(spl0, spl1);
+    keyR = lrToS(spl0, spl1);
+    
+    spl0 = keyL;
+    spl1 = keyR;
   );
   
   // Use channel 1+2 inputs if internal sidechain is
