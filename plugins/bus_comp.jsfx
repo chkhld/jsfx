@@ -18,12 +18,26 @@
 // filter that lets the detector circuit focus on higher frequencies
 // to avoid pumping from kick drums and bass where not desired.
 //
+// The channel routing switches between stereo and Mid/Side mode. In
+// stereo mode, the L channel is processed as the L channel, and the
+// R channel is processed as the R channel. In Mid/Side setting, the
+// L+R channels will be converted into M+S channels. M channel holds
+// the mid/center information of the signal, e.g. kick/snare/vocals,
+// and S channel holds the side/stereo information, e.g. guitars and
+// drum overheads. So in Mid/Side mode, the left sample holds center
+// information and the right sample holds the stereo information. In
+// M+S mode, the stereo field can appear "widened", depending on how
+// much each channel is compressed.
+//
 // With stereo linking disabled, both L+R channels will be processed 
 // individually. Fading in stereo linking will make the detector act
 // on a mix of the L+R channels increasingly. If you have incoherent
 // signals (e.g. two separate guitars) on both channels, you'll most
 // likely not want any stereo linking. Coherent signals, e.g. drums,
 // will need stereo linking or their stereo image will suffer badly.
+//
+// NOTE: if stereo liking is set to 100%, there won't be an audible
+// difference between L+R and M+S mode.
 //
 // Instability will add a bit of low-level noise to the signal, both
 // the audible path as well as the detector path. The noise is auto-
@@ -58,12 +72,13 @@ slider4: rawAttack=4<0, 5, {0.1,0.3,1,3,10,30}>Attack [ms]
 slider5: rawRelease=6<0, 6, {0.1,0.2,0.4,0.8,1.6,3.2,Auto}>Release [s]
 slider6: sidechain=0<0, 1, {Internal (inputs 1+2),External (inputs 3+4)}>Sidechain
 slider7: scFreq=75<20, 500, 1>SC high pass [Hz]
-slider8: linkAmount=100<0, 100, 1>Stereo link [%]
-slider9: instability=100<0,100,0.01>Instability [%]
-slider10:saturation=100<0,100,0.01>Saturation [%]
-slider11:dBTrim=0<-24, 24, 0.01>Makeup gain [dB]
-slider12:clip=0<0,1,{Disabled,Hard clip 0 dBfs}>Clip output
-slider13:pctMix=100<0,100,0.01>Dry/wet mix [%]
+slider8: midSide=0<0,1,{Stereo (L+R),Mid/Side (M+S)}>Channel routing
+slider9: linkAmount=100<0, 100, 1>Stereo link [%]
+slider10:instability=100<0,100,0.01>Instability [%]
+slider11:saturation=100<0,100,0.01>Saturation [%]
+slider12:dBTrim=0<-24, 24, 0.01>Makeup gain [dB]
+slider13:clip=0<0,1,{Disabled,Hard clip 0 dBfs}>Clip output
+slider14:pctMix=100<0,100,0.01>Dry/wet mix [%]
 
 in_pin:Input L
 in_pin:Input R
@@ -80,6 +95,7 @@ out_pin:Output R
   noiseFloor = 0.00001258925412; // dBToGain --> ~  -98 dBfs
   halfPi = $PI * 0.5;
   satSpeed = 50.0;  // ms timing for saturation envelope follower
+  rcpSqrt2 = 0.7071067812; // Reciprocal constant 1.0 / sqrt(2.0)
   compFeedback = 0.15;
   
   // Buffer for noise generation states
@@ -96,6 +112,13 @@ out_pin:Output R
     float = below * floatFloor + (!below) * float;
     (log(float) * M_LN10_20);
   );
+  
+  // Stereo L+R and Mid/Side M+S conversion functions
+  //
+  function lrToM (sampleLeft, sampleRight) ((sampleLeft + sampleRight) * rcpSqrt2);
+  function lrToS (sampleLeft, sampleRight) ((sampleLeft - sampleRight) * rcpSqrt2);
+  function msToL (sampleMid,  sampleSide)  ((sampleMid  + sampleSide)  * rcpSqrt2);
+  function msToR (sampleMid,  sampleSide)  ((sampleMid  - sampleSide)  * rcpSqrt2);
   
   // Accelerated 1/value calculation
   function fastReciprocal (value) (sqr(invsqrt(value)));
@@ -401,9 +424,6 @@ out_pin:Output R
   satL.satSetup(satSpeed);
   satR.satSetup(satSpeed);
   
-  // Initializing two independent DC Blockers
-  dcBlockerL = dcBlockerR = 0.0;
-  
 @slider
   
   // Set the compressor ratio
@@ -467,7 +487,7 @@ out_pin:Output R
 
   // Storing dry samples here for later dry/wet mixing
   dryL = spl0;
-  dryR = spl1;
+  dryR = spl1;  
   
   // Input gain. Branching is slow, so it's faster to
   // just do this multiplication instead of running
@@ -475,6 +495,15 @@ out_pin:Output R
   //
   spl0 *= gainIn;
   spl1 *= gainIn;
+  
+  // If Mid/Side mode is set, convert L+R samples to M+S.
+  // This will turn the left sample into the mid sample,
+  // and the right sample into the side sample.
+  midSide == 1 ?
+  (
+    spl0 = lrToM(dryL, dryR);
+    spl1 = lrToS(dryL, dryR);
+  );
   
   // Use channel 1+2 inputs if internal sidechain is
   // selected, otherwise use channel 3+4 input samples
@@ -557,11 +586,26 @@ out_pin:Output R
     spl1.dcBlocker();
   );
   
+  // If Mid/Side processing is selected
+  midSide == 1 ?
+  (
+    // Can mis-use these as buffers here, since they're
+    // no longer required by other parts of the process.
+    // The samples need to be buffered, else there will
+    // be problems converting back from M+S to L+R.
+    keyL = spl0;
+    keyR = spl1;
+    
+    // Convert the M+S samples back to L+R samples
+    spl0 = msToL(keyL, keyR);
+    spl1 = msToR(keyL, keyR);
+  );
+  
   // Makeup gain. Probably faster to just multiply than
   // doing conditional branching. This can be abused to
   // "drive" the signal into the hard clipping stage.
   spl0 *= gainOut;
-  spl1 *= gainOut;
+  spl1 *= gainOut;  
   
   // Output hard clipping
   clip == 1 ?
