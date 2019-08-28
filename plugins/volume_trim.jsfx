@@ -9,19 +9,32 @@
 //
 desc: Volume Trim
 
-slider1:0<-48,48,0.01> Trim dB
+slider1:dBGain=0<-48,48,0.01>Trim [dB]
 
-in_pin:left input
-in_pin:right input
-out_pin:left output
-out_pin:right output
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
 
 @init
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (pow(10.0, (decibels / 20.0)));
 
 @slider
-  trim = dBToGain(slider1);
-
+  
+  // Turns the slider's dB value into a float gain factor
+  trim = dBToGain(dBGain);
+  
 @sample
-  spl0 *= trim;
-  spl1 *= trim;
+  
+  // Set this to 0 to start with first input channel
+  channel = 0;
+  
+  // Cycle through all of the plugin's input channels
+  while (channel < num_ch)
+  (
+    // Apply trim gain to the current channel's sample
+    spl(channel) *= trim;
+    
+    // Increment channel counter
+    channel += 1;
+  );
