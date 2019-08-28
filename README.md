@@ -14,7 +14,7 @@ See the source files for details and instructions.
 - [Hard Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/hard_clipper.jsfx): Simple and effective, chops away peaks above an adjustable ceiling volume, call it cold transistor distortion if you must.
 - [Interpolated Noise](https://github.com/chkhld/jsfx/blob/master/plugins/interpolated_noise.jsfx): Various flavours of pleasingly natural and organically chaotic noise created with the help of various interpolation methods.
 - [M-S Fader](https://github.com/chkhld/jsfx/blob/master/plugins/m-s_fader.jsfx): Converts a stereo source to a Mid/Side signal and then fades between 100% Mid and 100% Side signal, or a mix of both. Great to remove the center signal, or to focus in on it.
-- [Phase Scope](https://github.com/chkhld/jsfx/blob/master/plugins/phase_scope.jsfx): Visualizes the stereo field of a signal, also commonly known as Goniometer, Vector Scope or Lissajous Display.
+- [Phase Scope](https://github.com/chkhld/jsfx/blob/master/plugins/phase_scope.jsfx): Visualizes the stereo field of a signal, also commonly known as Goniometer, Vector Scope or Lissajous. **NEW** Selectable visualization colour and freeze-on-halt function.
 - [Signal Crusher](https://github.com/chkhld/jsfx/blob/master/plugins/signal_crusher.jsfx): Sample rate changes, lost sample reconstruction, bit truncation, bit dithering... it's all in here.
 - [Soft Clipper](https://github.com/chkhld/jsfx/blob/master/plugins/soft_clipper.jsfx): Increasingly lowers signal peaks the closer they get to an adjustable ceiling volume, call it warm tube overdrive if you must. Has up to 16x oversampling, DC blocker and optional final (non oversampled) hard clipping stage for true 0 dBfs output.
 - [Stereo Pan](https://github.com/chkhld/jsfx/blob/master/plugins/stereo_pan.jsfx): Utility that implements various standardized pan laws, as well as some custom methods by me.
@@ -22,6 +22,7 @@ See the source files for details and instructions.
 - [Track Comp](https://github.com/chkhld/jsfx/blob/master/plugins/track_comp.jsfx): A low-CPU and ultra-flexible compressor, with everything from peak/RMS detection over feed-forward/-back modes, stereo linking and channel setups to automatic gain compensation and dynamic saturation.
 - [Volume Range Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_range_trim.jsfx): Fader to non-destructively alter a signal's volume within a specific range (+/- 6, 12, 24, 48 dB), gives finer control when automating volume. **NEW** Auto-adapts to track's channel count
 - [Volume Trim](https://github.com/chkhld/jsfx/blob/master/plugins/volume_trim.jsfx): Simple fader to alter a signal's volume, useful for gain-staging between plugins. **NEW** Auto-adapts to track's channel count
+- [Wave Scope](https://github.com/chkhld/jsfx/blob/master/plugins/wave_scope.jsfx): Waveform display that can visualize various mono/stereo channel streams as Decibels, signed or absolute samples. With fadeable colours and freeze-on-halt function.
 
 _(There may be more in the future)_
 
