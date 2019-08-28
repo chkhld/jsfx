@@ -9,22 +9,45 @@
 //
 desc: Volume Range Trim
 
-slider1:amount=0<-1,1,0.01> Trim amount
-slider2:range=0<0,4,1{6 dB,12 dB, 24 dB, 48 dB}> Range +/-
+slider1:amount=0<-1,1,0.0001>Trim amount
+slider2:range=0<0,3,1{6 dB,12 dB, 24 dB, 48 dB}>Range +/-
 
-in_pin:left input
-in_pin:right input
-out_pin:left output
-out_pin:right output
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
 
 @init
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
-  function sliderTodB () (amount * (6 + ((range > 0) * 6) + ((range > 1) * 6) + ((range > 2) * 6)));
-
+  
+  // Converts dB values to float gain factors. Divisions
+  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  
+  // Scales the slider's normalized [-1,+1] value to the
+  // relative amount of decibels set in the range param.
+  function sliderTodB () local (decibels)
+  (
+    // The amount of max. Decibels according to range parameter
+    decibels = 6 * pow(2, range);
+    
+    // Range dB scaled by the fader value
+    amount * decibels;
+  );
+  
 @slider
-  decibels = sliderTodB();
-  trim = dBToGain(decibels);
-
+  
+  // Convert dB change to float gain factor
+  trim = dBToGain(sliderTodB());
+  
 @sample
-  spl0 *= trim;
-  spl1 *= trim;
+  
+  // Set this to 0 to start with first input channel
+  channel = 0;
+  
+  // Cycle through all of the plugin's input channels
+  while (channel < num_ch)
+  (
+    // Apply trim gain to the current channel's sample
+    spl(channel) *= trim;
+    
+    // Increment counter to next channel
+    channel += 1;
+  );
