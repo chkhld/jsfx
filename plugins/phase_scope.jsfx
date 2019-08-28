@@ -15,11 +15,12 @@ in_pin:right input
 out_pin:none
 options:no_meter
 
-slider1:view=0<0,2,1{Dots,Lines,Rays}> Display
-slider2:glow=1<0,1,1{Off,On}> Glow
-slider3:axes=1<0,3,1{None,Left/Right,Left/Right + Decibels,Mid/Side,Mid/Side + Decibels,Left/Right + Mid/Side + Decibels}> Indicators
-slider4:labels=1<0,1,1{Off,On}> Labels
-slider5:freeze=0<0,1,1{Off,On}> Freeze
+slider1:view=0<0,2,1{Dots,Lines,Rays}>Visualization
+slider2:tint=85<0,255,0.01>Colour
+slider3:glow=1<0,1,1{Off,On}>Glow
+slider4:axes=1<0,3,1{None,Left/Right,Left/Right + Decibels,Mid/Side,Mid/Side + Decibels,Left/Right + Mid/Side + Decibels}>Indicators
+slider5:labels=1<0,1,1{Off,On}>Labels
+slider6:freeze=2<0,2,1{Off,On,Stop/Pause}>Freeze
 
 @init
   // Simple hard clipping
@@ -40,17 +41,81 @@ slider5:freeze=0<0,1,1{Off,On}> Freeze
   numCoords = ceil(srate * 0.05); // # of samples ~20 ms window
   lastCoord = numCoords - 1; // To save calculations later
   
-  // Colour handling for scope display
+  // Things related to the display drawing colours
   //
-  rgba = 50000;  // stores R,G,B,A for history points
-  rgba[0] = 0.0;
-  rgba[1] = 1.0;
-  rgba[2] = 0.0;
-  rgba[3] = 0.75;
+  colourRange = 85; // Fader 0-255 --> 255/3 = 85
+  colourR = 1; // Red colour default amount [0,1]
+  colourG = 0; // Green colour default amount [0,1]
+  colourB = 0; // Blue colour default amount [0,1]
+  colourA = 0.75; // Alpha/transparency amount fixed
+  //
   function setAxisHardColour () (gfx_set(1,1,1,0.4));
   function setAxisSoftColour () (gfx_set(1,1,1,0.2));
   function setDecibelColour  () (gfx_set(1,1,1,0.1));
   function setLabelColour    () (gfx_set(1,1,1,0.25));
+  //
+  // This sets the drawing colour of the display
+  //
+  // The UI fader ranges between [0,255] and its range is split into
+  // three sections of an equal third (=85) each. In every section,
+  // one colour is totally out and the two remaining colours fade in
+  // opposite directions, i.e. one gets stronger and one drops off.
+  //
+  // Colour amount calculations implemented after FastLED "Spectrum"
+  // hue chart rather than "Rainbow", merely for its simplicity.
+  // https://github.com/FastLED/FastLED/wiki/FastLED-HSV-Colors
+  // https://raw.githubusercontent.com/FastLED/FastLED/gh-pages/images/HSV-spectrum-with-desc.jpg
+  //
+  function tintColour () local (fraction)
+  (
+    // Positions 0 and 255 are always Red,
+    // so no calculations necessary here.
+    tint % 255 == 0 ?
+    (
+      colourR = 1; // full
+      colourG = 0; // out
+      colourB = 0; // out
+    );
+    
+    // First third of the colour range:
+    // Red falls, Green rises, no blue
+    (tint > 0) && (tint < 85) ?
+    (
+      // How far into this third of 85 is
+      // the fader, result in range [0,1]
+      fraction = tint / 85;
+      
+      colourR = 1 - fraction; // fall
+      colourG = fraction; // rise
+      colourB = 0; // out
+    );
+    
+    // Second third of the colour range:
+    // No red, Green falls, Blue rises
+    (tint >= 85) && (tint < 171) ?
+    (
+      // How far into this third of 85 is
+      // the fader, result in range [0,1]
+      fraction = (tint - 84) / 85;
+      
+      colourR = 0; // out
+      colourG = 1 - fraction; // fall
+      colourB = fraction; // rise
+    );
+    
+    // Last third of the colour range:
+    // Red rises, no Green, Blue falls
+    (tint >= 171) && (tint < 255) ?
+    (
+      // How far into this third of 85 is
+      // the fader, result in range [0,1]
+      fraction = (tint - 170) / 85;
+      
+      colourR = fraction; // rise
+      colourG = 0; // out
+      colourB = 1 - fraction; // fall
+    );
+  );
   
   // This will take a regular set of L/R samples and turn them
   // into a set of X/Y coordinates for placement on the scope.
@@ -254,7 +319,7 @@ slider5:freeze=0<0,1,1{Off,On}> Freeze
     // the mix of the two doesn't accumulate too much after
     // a few seconds. The image should not dim/decay while
     // the display is "frozen".
-    freeze == 0 ?
+    (freeze != 1 && stopped != 1) ?
     (
       dim = (glow == 1 ? 0.925 : 0.98);
       gfx_muladdrect(0,0,gfx_w,gfx_h, dim, dim, dim);
@@ -273,10 +338,10 @@ slider5:freeze=0<0,1,1{Off,On}> Freeze
       gfx_y = centerY - offsetY;
       
       // History colour
-      gfx_set(rgba[0], rgba[1], rgba[2], rgba[3], 127);
+      gfx_set(colourR, colourG, colourB, colourA, 127);
       
       // Draw point onto graph
-      view == 0 ? (gfx_setpixel(rgba[0], rgba[1], rgba[2]));
+      view == 0 ? (gfx_setpixel(colourR, colourG, colourB));
       view == 1 ? (gfx_line(lastX, lastY, gfx_x, gfx_y, 1));
       view == 2 ? (gfx_lineto(centerX, centerY, 1));
       
@@ -325,12 +390,24 @@ slider5:freeze=0<0,1,1{Off,On}> Freeze
       gfx_blit(100,1,0);
     );
   );
+  
+@slider
+  
+  // Recalculate the RGB colours to tint the display
+  tintColour();
+  
+@block
+  
+  // Triggers a display freeze when project is stopped 
+  // or paused in "Play/Pause" freeze mode. Responsive
+  // enough if this is switched in the @block section.
+  stopped = (freeze == 2 && play_state < 1) ? 1 : 0;
 
 @sample
   
   // If the display is frozen, don't calculate any new
   // samples and don't mess with the history buffers.
-  freeze == 0 ?
+  (freeze != 1 && stopped != 1) ?
   (
     calculateCoordinates();
     addToHistory();
