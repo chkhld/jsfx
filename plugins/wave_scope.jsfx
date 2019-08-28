@@ -1,0 +1,430 @@
+// Wave Scope
+//
+// Simple volume adjustment between -48 and +48 dBfs for
+// non-destructive edits or gain staging between plugins.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility gain volume trim
+//
+desc: Wave Scope
+
+// Don't need no I/O metering for dis
+options:no_meter
+
+slider1:routing=0<0,3,1{Stereo (L+R),Mono (left),Mono (right),Mono (L+R summed)}>Channels
+slider2:scaling=0<0,2,1{Decibels,Samples (absolute),Samples (signed)}>Display scale
+slider3:speed=10<1,250,1>Display speed
+slider4:tint=90<0,255,0.01>Display colour
+slider5:freeze=2<0,1,1{Off,On,Stop/Pause}>Freeze
+
+in_pin:Input L
+in_pin:Input R
+out_pin:none
+
+@init
+  
+  // Things related to the buffer that will hold the samples
+  // which the @gfx part will use to draw the waveform.
+  //
+  bufferSamples = 0;  // sample buffer memory address
+  bufferChannel = 0;  // numSamples per buffer channel
+  bufferLength  = 0;  // numSamples of entire buffer
+  bufferSampleL = 0;  // position in buffer to insert new L sample
+  bufferSampleR = 0;  // position in buffer to insert new R sample
+  
+  // Things related to the display drawing colours
+  //
+  colourRange = 85; // Fader 0-255 --> 255/3 = 85
+  colourR = 1; // Red colour default amount [0,1]
+  colourG = 0; // Green colour default amount [0,1]
+  colourB = 0; // Blue colour default amount [0,1]
+  
+  // Conversion between Decibels and float gain factos
+  //
+  // Converts dB values to float gain factors. Divisions
+  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Constants required for gainTodB
+  M_LN10_20 = 8.68588963806503655302257837833210164588794011607333;
+  floatFloor = 0.0000000630957; // gainTodB --> ~ -144 dBfs
+  //
+  // Converts float gain factors to dB values
+  function gainTodB (float) local (below) (log(max(floatFloor, abs(float))) * M_LN10_20);
+  
+  // Hard clipping at 0 dBfs, restricts samples to range [-1/+1]
+  function clamp (sample)
+  (
+    max(-1, min(1, sample))
+  );
+  
+  // Rescales a value from a defined arbitrary range to range [0,1]
+  // and can "weight" the scale by setting a center value.
+  // 
+  function normalize (low, high, value, center) local (proportion, skew)
+  (
+    proportion = (value - low) / (high - low);
+    skew = log(0.5) / log10((center - low) / (high - low));
+    pow(proportion, skew);
+  );
+  
+  // This will shift the entire buffer of samples left -1 position,
+  // losing the first sample of each channel in the process. After
+  // shifting, the new samples are inserted at the buffer's back.
+  // It's essentially a glorified delay line.
+  function addToBuffer (channelL, channelR)
+  (
+    // Shift existing sample buffer -1 to the left, losing first sample
+    memcpy(bufferSamples, bufferSecond, bufferSampleR); // bufSmpR = bufLen-1
+    
+    // If the display is scaled to signed sample values, and
+    // both L+R Stereo channel samples should be drawn
+    routing == 0 && scaling == 2 ? 
+    (
+      // If the channel routing is Stereo (L+R), we need to
+      // offset each channel's sample value, so that we can
+      // draw two parallel envelope lanes instead of one.
+      bufferSamples[bufferSampleL] = 0.5 - (clamp(channelL) * 0.5);
+      bufferSamples[bufferSampleR] = 0.5 - (clamp(channelR) * 0.5);
+    ):
+    // In any other routing/scaling scenario
+    (
+      // Insert latest absolute samples at end of buffer.
+      // Clamping the samples to restrict waves to lanes.
+      bufferSamples[bufferSampleL] = abs(clamp(channelL));
+      bufferSamples[bufferSampleR] = abs(clamp(channelR));
+    );
+  );  
+  
+  // This sets the drawing colour of the display
+  //
+  // The UI fader ranges between [0,255] and its range is split into
+  // three sections of an equal third (=85) each. In every section,
+  // one colour is totally out and the two remaining colours fade in
+  // opposite directions, i.e. one gets stronger and one drops off.
+  //
+  // Colour amount calculations implemented after FastLED "Spectrum"
+  // hue chart rather than "Rainbow", merely for its simplicity.
+  // https://github.com/FastLED/FastLED/wiki/FastLED-HSV-Colors
+  // https://raw.githubusercontent.com/FastLED/FastLED/gh-pages/images/HSV-spectrum-with-desc.jpg
+  //
+  function tintColour () local (fraction)
+  (
+    // Positions 0 and 255 are always Red,
+    // so no calculations necessary here.
+    tint % 255 == 0 ?
+    (
+      colourR = 1; // full
+      colourG = 0; // out
+      colourB = 0; // out
+    );
+    
+    // First third of the colour range:
+    // Red falls, Green rises, no blue
+    (tint > 0) && (tint < 85) ?
+    (
+      // How far into this third of 85 is
+      // the fader, result in range [0,1]
+      fraction = tint / 85;
+      
+      colourR = 1 - fraction; // fall
+      colourG = fraction; // rise
+      colourB = 0; // out
+    );
+    
+    // Second third of the colour range:
+    // No red, Green falls, Blue rises
+    (tint >= 85) && (tint < 171) ?
+    (
+      // How far into this third of 85 is
+      // the fader, result in range [0,1]
+      fraction = (tint - 84) / 85;
+      
+      colourR = 0; // out
+      colourG = 1 - fraction; // fall
+      colourB = fraction; // rise
+    );
+    
+    // Last third of the colour range:
+    // Red rises, no Green, Blue falls
+    (tint >= 171) && (tint < 255) ?
+    (
+      // How far into this third of 85 is
+      // the fader, result in range [0,1]
+      fraction = (tint - 170) / 85;
+      
+      colourR = fraction; // rise
+      colourG = 0; // out
+      colourB = 1 - fraction; // fall
+    );
+  );
+  
+  // These two values are required when drawing envelopes for
+  // signed sample values, they store the Y value of the last
+  // sample that was visualized, so the next sample can refer
+  // to it and draw a line from there to its new position.
+  lastY  = 0.5;
+  lastYL = 0.5;
+  
+@slider
+  
+  // If display speed was changed
+  bufferChannel != speed ?
+  (
+    // Update all buffer related addresses, indices and offsets
+    bufferSamples = 0;
+    bufferSecond  = bufferSamples + 1;
+    bufferChannel = speed;
+    bufferLength  = bufferChannel * 2;
+    bufferSampleL = bufferChannel - 1;
+    bufferSampleR = bufferLength  - 1;
+  );
+  
+  // Recalculate the RGB colours to tint the display
+  tintColour();
+  
+@block
+  
+  // Triggers a display freeze when project is stopped 
+  // or paused in "Play/Pause" freeze mode. Responsive
+  // enough if this is switched in the @block section.
+  stopped = (freeze == 2 && play_state < 1) ? 1 : 0;
+  
+@sample
+  
+  // Only push new samples into the buffer
+  // if the display NOT currently frozen.
+  (freeze != 1 && stopped != 1) ?
+  (
+    // Channel routing - Stereo
+    // Just use the L/R input samples
+    splL = spl0;
+    splR = spl1;
+    
+    // Channel routing - Mono Left
+    routing == 1 ?
+    (
+      // If display in Decibels or absolute samples
+      scaling < 2 ?
+      (
+        // Use the left sample value for both channels
+        splR = splL;
+      ):
+      // If display in signed samples
+      (
+        // Positive values of left sample for L channel,
+        // Negative values of left sample for R channel
+        splL = spl0 > 0 ? spl0 : 0;
+        splR = spl0 < 0 ? spl0 : 0;
+      );
+    );
+    
+    // Channel routing - Mono Right
+    routing == 2 ?
+    (
+      // If display in Decibels or absolute samples
+      scaling < 2 ?
+      (
+        // Use the right sample value for both channels
+        splL = splR;
+      ):
+      // If display in signed samples
+      (
+        // Positive values of left sample for L channel,
+        // Negative values of left sample for R channel
+        splL = spl1 > 0 ? spl1 : 0;
+        splR = spl1 < 0 ? spl1 : 0;
+      );
+    );
+    
+    // Channel routing - Mono Summed
+    routing == 3 ?
+    (
+      // Calculate L+R sum and compensate volume
+      splC = (spl0 + spl1) * 0.5;
+      
+      // If display in Decibels or absolute samples
+      scaling < 2 ?
+      (
+        // Use the summed sample value for both channels
+        splR = splL = splC;
+      ):
+      // If display in signed samples
+      (
+        // Positive values of summed sample for L channel,
+        // Negative values of summed sample for R channel
+        splL = splC > 0 ? splC : 0;
+        splR = splC < 0 ? splC : 0;
+      );    
+    );
+    
+    // Finally, push the evaluated L/R samples into the buffer
+    // from which the visualization will read values later.
+    addToBuffer(splL, splR);
+  );  
+  
+@gfx 480 240
+  
+  // Only shift and blit the display
+  // if it is NOT currently frozen.
+  (freeze != 1 && stopped != 1) ?
+  (
+    // Switch to off-screen drawing context
+    gfx_dest = 1;
+    gfx_mode = 0; // default
+    gfx_a = 1; // full alpha
+    gfx_setimgdim(1, gfx_w, gfx_h); // resize off-screen context to UI size
+    
+    // Copy current main drawing context to secondary with an offset,
+    // and paste it into the off-screen context at position 0. Doing
+    // this is the same as shifting an array, i.e. it will "drop" an
+    // amount of pixels from the left side of the UI, leaving that
+    // same amount of empty pixels on the right to draw to below.
+    gfx_blit(-1, 1, 0, speed, 0, gfx_w-speed, gfx_h, 0, 0, gfx_w-speed, gfx_h, 0 ,0);
+    
+    // Position X/Y at first empty pixel and make everything from
+    // thereon black, this paints the background for the display.
+    gfx_x = gfx_w - speed;
+    gfx_y = 0;
+    gfx_set(0,0,0,1);
+    gfx_rectto(gfx_w, gfx_h);
+    
+    // Work out various positions and scales
+    centerY = floor(gfx_h * 0.5);
+    scale = min(centerY, gfx_h - centerY);
+    
+    // Set waveform drawing colour
+    gfx_set(colourR, colourG, colourB, 1);
+    
+    // Draw lines for buffered samples, 
+    // starting from left with oldest.
+    step = 0;
+    
+    // Cycle through buffer from old to new and draw lines
+    while (step < speed)
+    (
+      // How far from the right edge to draw this step's line
+      stepOffset = speed - step;
+      
+      // Fetch L channel sample for this step
+      sampleL = bufferSamples[step];
+      
+      // Draw L channel line only if the sample is not silence
+      sampleL != 0 ?
+      (
+        // If scale is Decibels or absolute sample values,
+        // draw completely filled lines.
+        scaling < 2 ?
+        (
+          // Position X/Y to start from center line
+          gfx_x = gfx_w - stepOffset;
+          gfx_y = centerY;
+          
+          scaling == 0 ? sampleL = normalize(-144, 0, gainTodB(sampleL), -48);
+          
+          // Draw line upwards with length scaled by sample value
+          gfx_lineto(gfx_x, centerY - scale * sampleL, 1);
+        ):
+        // If scale is signed sample values, draw connected line.
+        (
+          // If the channel routing is set to Stereo (L+R), we need
+          // to draw two separate envelopes, one for each channel.
+          // Channel L will hold positive values in range [0.5,1],
+          // and it will hold negative values in range [0,0.5].
+          routing == 0 ?
+          (
+            // Position X/Y to start from previous X/Y coordinate.
+            // Since the channel L and channel R envelopes are not
+            // meant to be connected in this routing, this process
+            // uses a different variable lastYL instead of regular
+            // lastYL that's used everywhere else.
+            gfx_x = gfx_w - stepOffset - 1;
+            gfx_y = lastYL;
+            
+            // Draw line to Y coordinate of this X
+            gfx_lineto(gfx_x + 1, centerY - scale * sampleL, 1);
+            
+            // Update the state variable that holds the last Y value
+            // for this separately drawn channel L envelope.
+            lastYL = gfx_y;
+          ):
+          // If the channel routing is anything else but Stereo,
+          // channel L will hold positive values in range [0,1].
+          (
+            // Position X/Y to start from previous X/Y coordinate
+            gfx_x = gfx_w - stepOffset - 1;
+            gfx_y = lastY;
+            
+            // Draw line to Y coordinate of this X
+            gfx_lineto(gfx_x + 1, centerY - scale * sampleL, 1);
+            
+            // Update the state variable that holds the last Y value
+            lastY = gfx_y;
+          );
+        );
+      );
+      
+      // Fetch R channel sample for this step
+      sampleR = bufferSamples[step + speed];
+      
+      // Only if the sample is not silence
+      sampleR != 0 ?
+      (
+        // If scale is Decibels or absolute sample values,
+        // draw completely filled lines.
+        scaling < 2 ?
+        (
+          // Position X/Y to start from center line
+          gfx_x = gfx_w - stepOffset;
+          gfx_y = centerY;
+          
+          scaling == 0 ? sampleR = normalize(-144, 0, gainTodB(sampleR), -48);
+          
+          // Draw line downwards with length scaled by sample value
+          gfx_lineto(gfx_x, centerY + scale * sampleR, 1);
+        ):
+        // If scale is signed sample values, draw connected line.
+        (
+          // Position X/Y to start from previous X/Y coordinate
+          gfx_x = gfx_w - stepOffset - 1;
+          gfx_y = lastY;
+          
+          // If a Stereo signal with signed sample values is being
+          // drawn, the channel R sample must be offset to stay in
+          // correct phase with the channel L sample. In any other
+          // routing, this is not necessary. Doing this saves from
+          // having to use the full conditional and alternative Y
+          // state as is done when drawing sampleL above.
+          routing == 0 ? sampleR = 1.0 - sampleR;
+          
+          // Draw line to Y coordinate of this X
+          gfx_lineto(gfx_x + 1, centerY + scale * sampleR, 1);
+          
+          // Update the state variable that holds the last Y value
+          lastY = gfx_y;
+        );
+      );
+      
+      // Advance to the next empty X step
+      step += 1;
+    );
+    
+    // Set center line colour
+    gfx_set(1,1,1,0.3);
+    
+    // Draw center line
+    gfx_x = gfx_w - speed;
+    gfx_y = centerY;
+    gfx_lineto(gfx_w, gfx_y, 1);
+    
+    // Switch to main drawing context
+    gfx_dest  = -1;
+    gfx_mode  = 0; // default
+    gfx_clear = 0; // black
+    
+    gfx_x = 0;
+    gfx_y = 0;
+    gfx_a = 1; // Blit at full alpha
+    gfx_blit(1, 1, 0);
+  );
