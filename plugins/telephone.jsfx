@@ -1,0 +1,485 @@
+// Telephone
+//
+// Makes a signal sound like through a phone receiver.
+//
+// Degrades a regular input signal by compression and
+// multiple stages of hard band filtering, as well as
+// adding crackles, background noise and distortion.
+//
+// The obvious application would be on vocals, but it
+// can also wreak havoc on other sources, like drums,
+// maybe to completely obliterate a set of room mics?
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing filter compression distortion saturation
+//
+desc: Telephone
+
+slider1: channels=0<0,3,{Stereo,Mono [L], Mono [R], Mono summed [L+R]}>Audio routing
+slider3: threshold=-40<-60,0,0.1>Compression [dBfs]
+slider5: blank=1<0,1,{Constant,Auto-Blanking}>Noise & Crackle
+slider6: dBnoise=-60<-144,0,0.1>Noise [dBfs]
+slider7: dBcrackle=-24<-144,0,0.1>Crackle [dBfs]
+slider8: pctCrackle=25<0,100,1>Crackle [%]
+slider10:HzFreq=1750<1000,3000,1>Filter [Hz]
+slider11:width=3.5<1.0,6.0,0.01>Filter [Q]
+slider13:dBdrive=0.0<-12,12,0.1>Drive [dBfs]
+slider14:dBtrim=0<-12,12,0.01>Trim [dBfs]
+slider15:outClip=1<0,1,{Overshoot,Clip}>Overshoot
+
+in_pin: left input
+in_pin: right input
+out_pin:left output
+out_pin:right output
+
+@init
+
+  // Convenience constants
+  //
+  pi = $PI;
+  halfPi = pi * 0.5;
+  
+  // Conversion between Decibels and float gain factos
+  //
+  // Converts dB values to float gain factors. Divisions
+  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Constants required for gainTodB
+  M_LN10_20 = 8.68588963806503655302257837833210164588794011607333;
+  floatFloor = 0.0000000630957; // gainTodB --> ~ -144 dBfs
+  //
+  // Converts float gain factors to dB values
+  function gainTodB (float) local (below) (log(max(floatFloor, abs(float))) * M_LN10_20);
+  
+  // Accelerated 1/x calculation
+  //
+  function fastReciprocal (value) (sqr(invsqrt(value)));
+  
+  // RANDOMIZATION
+  //
+  // Returns a randomized value between [-limit,+limit]
+  //
+  function random (limit) (rand() * 2.0 * limit - limit);  
+  
+  // LINEAR INTERPOLATION
+  //
+  // Returns interpolated value at position [0,1] between
+  // two not necessarily related input values.
+  //
+  function linearInterpolation (value1, value2, position)
+  (
+    (value1 * (1.0 - position) + value2 * position);
+  );
+  
+  // EQ CLASS
+  //
+  // Implemented after Andrew Simper's State Variable Filter paper.
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+  //
+  function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
+  (
+    v3 = sample - ic2eq;
+    v1 = this.a1 * ic1eq + this.a2 * v3;
+    v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
+    ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
+    (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
+  );
+  //
+  // HIGH PASS FILTER
+  //
+  function eqHP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan(halfPi * (Hz / srate)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = -k; m2 = -1.0;
+  );
+  //
+  // LOW PASS FILTER
+  //
+  function eqLP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan(halfPi * (Hz / srate)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 0.0; m1 = 0.0; m2 = 1.0;
+  );
+  //
+  // BAND PASS FILTER
+  //
+  function eqBP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan(pi * (Hz / srate)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 0.0; m1 = 1.0; m2 = 0.0;
+  );
+  
+  // ATTACK / RELEASE ENVELOPE
+  //
+  // This will turn a variable into a full envelope container that
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release timings.
+  //
+  function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
+  (
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 * fastReciprocal(msAttack  * srate));
+    coeffRel = exp(-1000 * fastReciprocal(msRelease * srate));
+  );
+  //
+  // This calculates the new envelope state for the current sample.
+  // If the current input is above the current envelope state, let
+  // the attack envelope run. If the current input sample is below
+  // the current envelope state, then let the release envelope run.
+  // 
+  // The value should already be abs()-ed by here to positive dBfs.
+  //
+  function attRelTick (dBsample) instance (envelope, coeffAtt, coeffRel) local (above, change)
+  (
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
+    
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
+  );
+  
+  // GAIN CALCULATOR
+  //
+  // From all the various levels, this will calculate more
+  // values required to calculate with later on.
+  //
+  // The formula to calculate the gain compensation value was
+  // implemented after Tom Duffy at Tascam and Charles Hoffman
+  // at Black Ghost Audio. It's far from perfect.
+  // https://music.columbia.edu/pipermail/music-dsp/2009-September/068027.html
+  // https://www.blackghostaudio.com/blog/the-ultimate-guide-to-compression
+  //
+  function gainCalcSetup (dBThreshold, fullRatio, dBRange) instance (threshold, ratio, makeup, range) local ()
+  (
+    threshold = dBThreshold;            // signed dBfs
+    ratio = fastReciprocal(fullRatio);  // 1/x --> compression < 1, expansion > 1
+    makeup = dBToGain(abs((threshold + (abs(threshold) * ratio)) * 0.4)); // 0.5 went too loud too quickly
+    range = dBRange; // signed dBfs
+  );
+  //
+  function gainCalcTick (dBsample) instance (ratio, threshold, range) local (dBReduction, slope)
+  (
+    slope = 1.0 - ratio;
+    
+    dBReduction = min(0.0, slope * (threshold - dBsample));
+    
+    // Make sure the reduction is not higher than the specified
+    // maximum range value in Decibels.
+    dBToGain(max(dBReduction, range));
+  );
+  
+  // COMPRESSOR
+  //
+  // Finally, now all the individual components created
+  // earlier are combined into a single big compressor.
+  //
+  // msAttack, msRelease: milliseconds
+  // dBThreshold, dBRange: signed dBfs
+  // Full ratio: >1 for compression, <1 for expansion
+  // autoMakeup: 0 = active, 1 = inactive
+  //
+  function compSetup (msAttack, msRelease, dBThreshold, fullRatio, dBRange, autoMakeup) instance (attRel, calc, autogain) local ()
+  (
+    attRel.attRelSetup(msAttack, msRelease);
+    calc.gainCalcSetup(dbThreshold, fullRatio, dBRange);
+    autogain = autoMakeup;
+  );
+  //
+  function compTick (sample) instance (GR, attRel, calc, autogain) local (keyGain, keyDecibels, gainAdjust)
+  (
+    // The sidechain key sample value as a float gain factor.
+    // Doesn't need to be made absolute, this already happens
+    // outside when channel linking is prepared.
+    keyGain = sample;
+    
+    // Turn the key sample [0;1] into a dBfs value
+    keyDecibels = gainTodB(keyGain);
+    
+    // Send the dBfs sample value into the attack/release
+    // envelope follower and get a new envelope state.
+    attRel.attRelTick(keyDecibels);
+    
+    // Calculate the required gain reduction for this input
+    // sample based on user-specified parameters. This will
+    // output the GR value as a float gain factor, NOT in dB.
+    GR = calc.gainCalcTick(attRel.envelope);
+    
+    // Fetch automatic gain compensation factor if active
+    gainAdjust = (autogain == 0) ? calc.makeup : 1.0;
+    
+    // This return value is the float factor gain adjustment
+    // that needs to be applied to the signal sample, it is
+    // NOT an actual sample value. It contains auto make-up.
+    GR * gainAdjust;
+  );  
+  
+  // HARD CLIPPING
+  // 
+  // Clamps a signal to -0.1 dBfs
+  //
+  function hardclip ()
+  (
+    this = max(-0.998, min(0.998, this))
+  );
+  
+  // HYPERBOLIC TANGENT APPROXIMATION
+  //
+  // Implemented after code posted by Antto on KVR
+  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function tanh (number) local (xa, x2, x3, x4, x7, res)
+  (
+    xa = abs(number); x2 = xa * xa; x3 = x2 * xa; x4 = x2 * x2; x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    sign(number) * res;
+  );
+  
+  // SOFT CLIPPING
+  //
+  function softclip (ceiling)
+  (
+    vCeiling = min(ceiling, 1.0);
+    vUpscale = gain / vCeiling;
+    
+    this  = tanh(this * vUpscale);
+    this *= vCeiling;
+  );
+  
+  // DC Blocker
+  //
+  // Removes static 0 Hz frequency content
+  //
+  function dcBlocker () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
+  );
+  
+  // Fixed compression settings
+  compTopAttack  = 10.0;
+  compTopRelease = 10.0;
+  
+  compLowAttack  = 1.0;
+  compLowRelease = 100.0;
+  
+  compRatio      = 30.0;
+  autoGain       = 0; // 0 = enabled, 1 = disabled
+  
+  // Compressor sidechain HP filter settings
+  compHPfreq = 750;
+  compHPwide = 1.0;
+  
+  // Two HP filters for compressor sidechain
+  hpL.eqHP(compHPfreq, compHPwide);
+  hpR.eqHP(compHPfreq, compHPwide);
+  
+@slider
+  
+  // Scale parameter range [-60,0] to factor range [0,1]
+  thresholdFactor = abs(threshold) / 60;
+  
+  // Calculate attack/release timings by interpolating between top/low timings
+  compAttack  = linearInterpolation(compTopAttack,  compLowAttack,  thresholdFactor);
+  compRelease = linearInterpolation(compTopRelease, compLowRelease, thresholdFactor);
+  
+  // Prepare two compressor instances, one for each channel
+  compL.compSetup(compAttack, compRelease, threshold, compRatio, threshold, autoGain);
+  compR.compSetup(compAttack, compRelease, threshold, compRatio, threshold, autoGain);
+  
+  // Compressor gain compensation past -36 dBfs Threshold
+  //
+  // Past -36 dBfs threshold, the auto gain compensation
+  // becomes inefficient. So for threshold values in the
+  // range of -36 dBfs and below, the same Decibels will
+  // be added as gain compensation as the threshold sits
+  // under -36 dBfs.
+  // 
+  // Threshold -10 dB = 26 dB above =  +0 dB compensation.
+  // Threshold -36 dB =  0 dB below =  +0 dB compensation.
+  // Threshold -40 dB =  4 dB below =  +4 dB compensation.
+  // Threshold -55 dB = 19 dB below = +19 dB compensation.
+  //
+  // Gain compensation in dB
+  diffThreshold = max(0, 24.0 - (60.0 + threshold)); // maxThr=-60, critThr=-36, diff=24
+  // 
+  // Converted into float gain factor
+  compCompensation = dBToGain(diffThreshold);
+  
+  // Update band-pass filter parameters
+  filterL.eqBP(HzFreq, width);
+  filterR.eqBP(HzFreq, width);
+  
+  // Additional output HP+LP filters
+  hpOutL.eqHP(HzFreq * 0.75, width * 0.5);
+  hpOutR.eqHP(HzFreq * 0.75, width * 0.5);
+  lpOutL.eqLP(HzFreq * 1.50, width * 0.5);
+  lpOutR.eqLP(HzFreq * 1.50, width * 0.5);
+  
+  // Clipping stage levels
+  gain = dBToGain( dBdrive); // pre-clip  boost
+  attn = dBToGain(-dBdrive); // post-clip attenuation
+  
+  // Calculate noise floor level
+  noiseGain = dBToGain(dBnoise);
+  
+  // Crackle probability threshold
+  crackleProb = 0.000001 * pctCrackle;
+  
+  // Volume of added crackles
+  crackleGain = dBToGain(dBcrackle);
+  
+  // Output trim gain
+  trim = dBToGain(dBtrim);
+
+@sample  
+  
+  // Stereo operation
+  (channels == 0) ?
+  (
+    // Prepare stereo key signal for compressor
+    keyL = abs(hpL.eqTick(spl0));
+    keyR = abs(hpR.eqTick(spl1));
+    
+    // Run the compression on the key samples
+    spl0 *= compL.compTick(keyL);
+    spl1 *= compR.compTick(keyR);
+    
+    // Additional gain compensation if Threshold < -36 dbfs
+    spl0 *= compCompensation;
+    spl1 *= compCompensation;
+    
+    // Is auto-blanking active and no signal on either input channel?
+    // Check after compression for smoother transitions.
+    blanked = (blank == 1 && (spl0 == 0 && spl1 == 0));  
+    
+    // If noise active and not being auto-blanked
+    (dBnoise > -144 && !blanked) ?
+    (
+      // Add noise floor to signal
+      spl0 += random(noiseGain);
+      spl1 += random(noiseGain);
+    );
+    
+    // If crackles active and not being auto-blanked
+    (dBcrackle > -144 && !blanked) ?
+    (
+      // Generate mono/stereo crackle trigger values in range [0,1]
+      crackleSeedL = rand();
+      crackleSeedR = rand();
+      
+      // If left crackle trigger value below probability threshold
+      (crackleSeedL < crackleProb) ? 
+      (
+        // Add crackle to left signal
+        spl0 += (sign(spl0) * crackleGain);
+      );
+      
+      // If right crackle trigger value below probability threshold
+      (crackleSeedR < crackleProb) ? 
+      (
+        // Add crackle to right signal
+        spl1 += (sign(spl1) * crackleGain);
+      );
+    );
+    
+    // Run the band-pass filter
+    spl0 = filterL.eqTick(spl0);
+    spl1 = filterR.eqTick(spl1);
+    
+    // Additional HP+LP filtering
+    spl0 = hpOutL.eqTick(spl0);
+    spl1 = hpOutR.eqTick(spl1);
+    spl0 = lpOutL.eqTick(spl0);
+    spl1 = lpOutR.eqTick(spl1);
+    
+    // Pre-clipping boost
+    spl0 *= gain;
+    spl1 *= gain;
+    
+    // Apply soft clipping
+    spl0.softclip(0.975);
+    spl1.softclip(0.975);
+    
+    // Run DC blocker
+    spl0.dcBlocker();
+    spl1.dcBlocker();
+    
+    // Reverse previous boost
+    spl0 *= attn;
+    spl1 *= attn;  
+    
+    // Output trim gain
+    spl0 *= trim;
+    spl1 *= trim;
+    
+    // If output hard clipping enabled
+    (outClip == 1) ?
+    (
+      spl0.hardclip();
+      spl1.hardclip();
+    );
+  );
+  
+  // Mono operation -- simplified version of above
+  (channels > 0) ?
+  (
+    (channels == 1) ? // MONO - L INPUT
+    (
+      key = abs(hpL.eqTick(spl0));
+    ):
+    (channels == 2) ? // MONO - R INPUT
+    (
+      spl0 = spl1;
+      key = abs(hpL.eqTick(spl0));
+    ):
+    (channels == 3) ? // MONO - L+R SUMMED
+    (
+      key = sqrt(sqr(abs(hpL.eqTick(spl0))) + sqr(abs(hpR.eqTick(spl1))));
+      spl0 = spl1 = (spl0 + spl1) * 0.5;
+    );
+    
+    spl0 *= compL.compTick(key);
+    spl0 *= compCompensation;
+    
+    blanked = (blank == 1 && spl0 == 0);
+    
+    (dBnoise > -144 && !blanked) ?
+    (
+      spl0 += random(noiseGain);
+    );
+    
+    (dBcrackle > -144 && !blanked) ?
+    (
+      crackleSeedL = rand();
+      
+      (crackleSeedL < crackleProb) ? 
+      (
+        spl0 += (sign(spl0) * crackleGain);
+      );
+    );
+    
+    spl0 = filterL.eqTick(spl0);
+    spl0 = hpOutL.eqTick(spl0);
+    spl0 = lpOutL.eqTick(spl0);
+    
+    spl0 *= gain;
+    spl0.softclip(0.975);
+    spl0.dcBlocker();
+    spl0 *= attn;
+    spl0 *= trim;
+    
+    (outClip == 1) ?
+    (
+      spl0.hardclip();
+    );
+    
+    spl1 = spl0;
+  );
+  
