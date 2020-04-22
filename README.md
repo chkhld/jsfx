@@ -4,7 +4,9 @@ A free collection of JS (JesuSonic) plugins for [Reaper](https://www.reaper.fm/)
 See the source files for details and instructions.
 
 ## Included effects
+- [Amp Sim](https://github.com/chkhld/jsfx/blob/master/plugins/amp_sim.jsfx): Guitar and bass amplifier with mono/stero routing, flexible gate, booster function, interactive inter-stage EQ bands, dynamic Depth and Presence bands and maximizer circuit
 - [Bus Comp](https://github.com/chkhld/jsfx/blob/master/plugins/bus_comp.jsfx): Submix bus oriented compressor with automatic/program-dependent release, fadeable stereo linking, external sidechain input with high pass filter, instability noise, dynamic saturation, optional output hard clipping and dry/wet mix for parallel compression. **NEW** Now with Mid/Side mode
+- [Cabinet Sim](https://github.com/chkhld/jsfx/blob/master/plugins/cabinet_sim.jsfx): Simple cab sim with 5 burnt-in impulse responses, 4 for guitar and 1 for bass. Can **not** load IRs from file.
 - [Consolidator](https://github.com/chkhld/jsfx/blob/master/plugins/consolidator.jsfx): A set of 3 compressors with sidechain filter and stereo linking chained in a row, each with its own character. Has a dry/wet mix parameter for instant parallel/NY compression. **NEW** Now with Mid/Side mode
 - [Correlation Meter](https://github.com/chkhld/jsfx/blob/master/plugins/correlation_meter.jsfx): Inspect your song's stereo phase balance and find mono-problematic areas by watching an indicator go red.
 - [DC Offset](https://github.com/chkhld/jsfx/blob/master/plugins/dc_offset.jsfx): Adds constant 0 Hz content and shifts waveforms up or down, probably only useful to test DC filters.
