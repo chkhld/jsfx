@@ -1,0 +1,338 @@
+// Reference Noise
+// 
+// Generates noise of different kinds to use as mixing reference.
+// 
+// It's an age-old audio engineer's trick to use pink noise as a
+// reference signal for mixing. The spectrum of pink noise isn't
+// an accurate reference to human hearing though, much rather an
+// approximation and a workaround.
+// 
+// By examining the spectral images of existing songs and mixes,
+// and applying a few filtering stages to a signal of basic pink
+// noise, the approximated workaround curve of pink noise can be
+// "bent" into much more useful reference signals.
+//
+// That's what this thing is. I analyzed a wide variety of songs
+// from various styles and eras, and created a list of filtering
+// profiles that turn primitive pink noise into useful reference
+// signals.
+//
+// Run the output of this plugin into the sidechain/key input of
+// your favorite spectrum analyzer, if it has a sidechain input,
+// and try to mix your tracks to approximate its spectral curve.
+// 
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility noise mastering analysis reference spectrum
+// 
+desc:Reference Noise
+
+slider1:preset=2<0,12,1{White Noise,Pink Noise,Generic Modern,Generic Low-End,Generic Classical,Folk/Acoustic,Hip Hop Classic,Hip Hop Modern,Rock 60s/70s,Rock 80s/90s,Metal 80s,Metal 90s,Metal Modern}>Noise Profile
+slider2:dBGain=0<-48,48,0.0001>Trim [dB]
+
+out_pin:Left
+out_pin:Right
+
+@init
+  
+  // State memory for noise generation
+  noiseState = 0;
+  
+  // Preset switching state memory
+  lastPreset = -1;
+  
+  // Variable noise gain adjustment factor
+  gainAdjust = 1.0;
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  
+  // EQ CLASSES
+  //
+  // Implemented after Andrew Simper's State Variable Filter paper.
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+  //
+  function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
+  (
+    v3 = sample - ic2eq;
+    v1 = this.a1 * ic1eq + this.a2 * v3;
+    v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
+    ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
+    (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
+  );
+  //
+  // Peak EQ band
+  //
+  function eqPK (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / (Q * A);
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = k * ((A * A) - 1.0); m2 = 0.0;
+  );
+  //
+  // High pass filter
+  //
+  function eqHP (SR, Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = -k; m2 = -1.0;
+  );
+  //
+  // Low pass filter
+  //
+  function eqLP (SR, Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 0.0; m1 = 0.0; m2 = 1.0;
+  );
+  //
+  // Low shelf filter
+  //
+  function eqLS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = k * (A - 1.0); m2 = sqr(A) - 1.0;
+  );
+  //
+  // High shelf filter
+  //
+  function eqHS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = sqr(A); m1 = k * (1.0 - A) * A; m2 = 1.0 - m0;
+  );
+  //
+  // Dummy pass-through non-filter
+  //
+  function eqDM () instance (a1, a2, a3, m0, m1, m2)
+  (
+    m0 = 1; m1 = 0; m2 = 0;
+  );
+  
+  // WHITE NOISE
+  //
+  // Randomized sample values between -1 and +1
+  // 
+  function tickWhite ()
+  (
+    ((rand() * 2)-1);
+  );
+  
+  // PINK NOISE
+  //
+  // "Warm" sounding, volume falls off at -3 dBfs per octave across the
+  // spectrum. Often said to be similar to the optimal mix balance, and
+  // to be generally pleasing to the human ear.
+  //
+  // Implemented after Larry Trammell's "newpink" method:
+  // http://www.ridgerat-tech.us/tech/newpink.htm
+  //
+  function tickPink () local (break, sample)
+  (
+    // Randomized sample in range [0,1]
+    sample = rand();
+    
+    break = 0;
+    
+    break == 0 && sample <= 0.00198 ? (noiseState[1] = tickWhite() * 3.8024; break = 1);
+    break == 0 && sample <= 0.01478 ? (noiseState[2] = tickWhite() * 2.9694; break = 1);
+    break == 0 && sample <= 0.06378 ? (noiseState[3] = tickWhite() * 2.5970; break = 1);
+    break == 0 && sample <= 0.23378 ? (noiseState[4] = tickWhite() * 3.0870; break = 1);
+    break == 0 && sample <= 0.91578 ? (noiseState[5] = tickWhite() * 3.4006; break = 1);
+    
+    // Noise sample accumulation
+    noiseState[0] = 0;
+    noiseState[0] += noiseState[1];
+    noiseState[0] += noiseState[2];
+    noiseState[0] += noiseState[3];
+    noiseState[0] += noiseState[4];
+    noiseState[0] += noiseState[5];
+    
+    // -24 dB gain adjustment
+    noiseState[0] *= 0.06309573445;
+  );
+  
+  // FILTERED NOISE
+  // 
+  // Generates a pink noise sample and applies filters to it in order
+  // to "bend" its curve towards various musical spectral profiles.
+  // 
+  function tickFiltered () local (noise)
+  (
+    // Get a pink noise sample to start with
+    noise = tickPink();
+    
+    // Run the filters over the pink noise sample
+    noise = filter1.eqTick(noise);
+    noise = filter2.eqTick(noise);
+    noise = filter3.eqTick(noise);
+    noise = filter4.eqTick(noise);
+    noise = filter5.eqTick(noise);
+    
+    // Return the filtered sample
+    noise;
+  );
+
+@slider
+  
+  // Turns the trim slider's dB value into a float gain factor
+  trim = dBToGain(dBGain);
+  
+  // If a different preset was selected
+//preset != lastPreset ?
+  1 ?
+  (
+    // White and pink noises
+    preset == 0 ? gainAdjust = 0.9;
+    preset == 1 ? gainAdjust = 0.95;
+    
+    // Generic Modern
+    preset == 2 ?
+    (
+      filter1.eqHS(srate,   750, 0.4, -8);
+      filter2.eqHP(srate,    70, 0.5);
+      filter3.eqLP(srate, 16000, 0.2);
+      filter4.eqDM();
+      filter5.eqDM();
+      
+      gainAdjust = 1.45;
+    );
+    
+    // Generic Low-End
+    preset == 3 ?
+    (
+      filter1.eqHS(srate,   750, 0.4, -10);
+      filter2.eqHP(srate,    40, 0.55);
+      filter3.eqLP(srate, 16000, 0.3);
+      filter4.eqDM();
+      filter5.eqDM();
+      
+      gainAdjust = 1.35;
+    );
+    
+    // Generic Classical
+    preset == 4 ? 
+    (
+      filter1.eqLS(srate,   250, 0.50, -30);
+      filter2.eqHS(srate,   750, 0.50, -20);
+      filter3.eqHS(srate,  6000, 0.33, -20);
+      filter4.eqDM();
+      filter5.eqDM();
+      
+      gainAdjust = 2.8;
+    );
+    
+    // Folk/Acoustic
+    preset == 5 ?
+    (
+      filter1.eqHP(srate,   120, 1.5);
+      filter2.eqHS(srate,   750, 0.3, -10);
+      filter3.eqLP(srate, 17500, 0.25);
+      filter4.eqDM();
+      filter5.eqDM();
+      
+      gainAdjust = 1.25;
+    );
+    
+    // Hip Hop Classic
+    preset == 6 ?
+    (
+      filter1.eqHP(srate,    70, 2.0);
+      filter2.eqHS(srate,   750, 0.3, -4.5);
+      filter3.eqPK(srate,   800, 0.5, -3);
+      filter4.eqPK(srate,  7500, 0.75, 4.5);
+      filter5.eqLP(srate, 15000, 0.2);
+      
+      gainAdjust = 0.95;
+    );
+    
+    // Hip Hop Modern
+    preset == 7 ?
+    (
+      filter1.eqHP(srate,    70, 2.0);
+      filter2.eqHS(srate,   300, 0.6, -9);
+      filter3.eqPK(srate,   900, 0.7,  9);
+      filter4.eqPK(srate,  2500, 0.7,  9);
+      filter5.eqLP(srate, 13000, 0.9);
+      
+      gainAdjust = 0.75;
+    );
+    
+    // Rock 60s/70s
+    preset == 8 ?
+    (
+      filter1.eqHP(srate,   130, 0.75);
+      filter2.eqHS(srate,   400, 1.0, -10);
+      filter3.eqPK(srate,   300, 1.0, -6);
+      filter4.eqPK(srate,  3500, 0.7,  5);
+      filter5.eqLP(srate,  9500, 0.5);
+      
+      gainAdjust = 2.0;
+    );
+    
+    // Rock 80s/90s
+    preset == 9 ?
+    (
+      filter1.eqHP(srate,   140, 1.0);
+      filter2.eqHS(srate,   200, 0.75, -9);
+      filter3.eqPK(srate,   750, 2.0,   3);
+      filter4.eqPK(srate,  3500, 1.5,   4);
+      filter5.eqLP(srate, 12000, 0.2);
+      
+      gainAdjust = 1.65;
+    );
+    
+    // Metal 80s
+    preset == 10 ?
+    (
+      filter1.eqHP(srate,    80, 1.0);
+      filter2.eqHS(srate,   300, 0.6, -12);
+      filter3.eqPK(srate,  4000, 0.4,  9);
+      filter4.eqLP(srate, 15000, 0.4);
+      filter5.eqDM();
+      
+      gainAdjust = 1.3;
+    );
+    
+    // Metal 90s
+    preset == 11 ?
+    (
+      filter1.eqHP(srate,    30, 0.7);
+      filter2.eqLS(srate,   120, 2.0, -6);
+      filter3.eqHS(srate,   200, 0.6, -12);
+      filter4.eqPK(srate,  3700, 0.7,  9);
+      filter5.eqLP(srate, 14000, 0.4);
+      
+      gainAdjust = 1.7;
+    );
+    
+    // Metal Modern
+    preset == 12 ?
+    (
+      filter1.eqHP(srate,    80, 2.5);
+      filter2.eqHS(srate,   600, 0.2,  6);
+      filter3.eqPK(srate,   600, 1.0, -3);
+      filter4.eqLP(srate, 12000, 0.3);
+      filter5.eqDM();
+      
+      gainAdjust = 0.6;
+    );
+    
+    // Update state flag
+    lastPreset = preset;
+  );
+  
+@sample
+  
+  // Generate noise based on selected preset
+  preset == 0 ? spl0 = tickWhite();
+  preset == 1 ? spl0 = tickPink();
+  preset >= 2 ? spl0 = tickFiltered();
+  
+  // Apply trim gain to signal and copy to 2nd output channel
+  spl0 *= gainAdjust * trim;
+  spl1  = spl0;
