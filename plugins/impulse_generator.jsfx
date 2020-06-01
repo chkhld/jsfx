@@ -1,0 +1,77 @@
+// Impulse Generator
+//
+// This will generate a 1-sample impulse when the trigger
+// slider is pulled over to the right.
+// 
+// May not sound terribly exciting, but creates the perfect
+// source to send through devices you want to capture as IR.
+//
+// You would use this to capture a reverb or delay tail, the
+// frequency profile of a guitar cabinet or EQ, etc.
+//
+// Load the generator as the first plugin on an empty track
+// then insert the plugins or devices to capture behind it.
+// Switch the record mode of the track to Output, start the
+// recording and push the Trigger slider to the right. Stop
+// the recording, trim the recorded item down to a sensible
+// length, make sure it has no crossfades at start and end.
+//
+// Export the resulting item into a WAV file, and load that
+// WAV into ReaVerb, done.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility impulse response IR sampling
+//
+desc: Impulse Generator
+
+slider1:dBLevel=0<-48,0,0.0001>Level [dB]
+slider2:btnTrig=0<0,1,1>Trigger
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts dB values to float gain factors.
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+
+@slider
+  
+  // Turns the slider's dB value into a float gain factor.
+  // Essentially the impulse sample sent on to the device.
+  impulse = dBToGain(dBLevel);
+  
+  // If the trigger slider was just dragged to the right,
+  // set the flag that signals the impulse should play.
+  (btnTrig == 1 && prvTrig == 0) ? (triggered = 1) : (triggered = 0);
+  
+  // Update this status flag to track slider changes
+  prvTrig = btnTrig;
+  
+@sample
+  
+  // If the trigger slider was moved to the right
+  (triggered == 1) ?
+  (
+    // Start at channel 0
+    channel = 0;
+    
+    // Cycle through the available channels
+    while (channel < num_ch)
+    (
+      // Play the impulse sample at the set level
+      spl(channel) = impulse;
+      
+      // Increment counter to next channel
+      channel += 1;
+    );
+    
+    // For this kind of purpose the impulse should only last 
+    // for a duration of 1 sample. Having played the impulse
+    // sample already, the trigger slider and state flag can
+    // be reset immediately.
+    btnTrig = 0;
+    triggered = 0;
+  );
+  
