@@ -16,6 +16,12 @@
 // the recording, trim the recorded item down to a sensible
 // length, make sure it has no crossfades at start and end.
 //
+// IMPORTANT: you need to zoom right in and ensure that the
+// first sample in the item is the first sample that is not
+// on the center zero line. If you don't do this, the IR is
+// going to be delayed, and you'll have to remove the delay
+// in ReaVerb later by trimming the start/end times.
+//
 // Export the resulting item into a WAV file, and load that
 // WAV into ReaVerb, done.
 //
