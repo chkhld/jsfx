@@ -55,10 +55,14 @@ out_pin:Output Right
   
 @sample
   
-  // Sum the inverted channel samples onto their
+  // Buffer left input sample, so the following step
+  // doesn't use its -then- already modified value
+  splL = spl0;
+  
+  // Sum the inverted input samples onto their
   // opposite channels at the amount set by user
   spl0 += -spl1 * amount;
-  spl1 += -spl0 * amount;
+  spl1 += -splL * amount;
   
   // Output gain adjustment
   spl0 *= trim;
