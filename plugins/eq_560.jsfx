@@ -1,0 +1,414 @@
+// EQ 560
+//
+// Classic American 10-band graphic console equalizer.
+// Limited flexibility, fast and streamlined workflow.
+// 
+// Applies 2x oversampling for accurate high frequency
+// filter curves. Adds some "analog character" on top,
+// but auto-blanks and auto-bypasses the processing as
+// not to litter a mix with noise floor on idle tracks
+// and to save some CPU cycles with no signal present.
+// 
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing equalizer eq analog console
+//
+desc:EQ 560
+
+// Volume and EQ band slider assignment
+slider1: gainAdj=0<-12,12,0.0001>Trim [dB]
+slider2: band16K=0<-12,12,0.1>16K [dB]
+slider3: band8K= 0<-12,12,0.1>8K [dB]
+slider4: band4K= 0<-12,12,0.1>4K [dB]
+slider5: band2K= 0<-12,12,0.1>2K [dB]
+slider6: band1K= 0<-12,12,0.1>1K [dB]
+slider7: band500=0<-12,12,0.1>500 [dB]
+slider8: band250=0<-12,12,0.1>250 [dB]
+slider9: band125=0<-12,12,0.1>125 [dB]
+slider10:band63= 0<-12,12,0.1>63 [dB]
+slider11:band31= 0<-12,12,0.1>31 [dB]
+
+// I/O pin assignment
+in_pin:Input L
+in_pin:Input R
+out_pin:Output L
+out_pin:Output R
+
+@init
+  
+  // Converts dB values to float gain factors. Divisions
+  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  
+  // Accelerated 1/x calculation
+  function fastReciprocal (value) (sqr(invsqrt(value)));
+  
+  // LINEAR INTERPOLATION
+  //
+  // Returns interpolated value at position [0,1] between
+  // two not necessarily related input values.
+  //
+  function linearInterpolation (value1, value2, position)
+  (
+    (value1 * (1.0 - position) + value2 * position);
+  );
+  
+  // The EQ filters have variable qualities/widths that
+  // are calculated from the dB gain each band uses
+  //
+  function dBToWidth (decibels) local (mu)
+  (
+    // mu = Position between linear [0,1] range for interpolation
+    // sqr() is used to accelerate mu towards 1 (slow start, fast end)
+    // 1/12 = 1*0.08333333333
+    mu = sqr(abs(decibels) * 0.08333333333);
+    
+    // Minimum Q = 0.126984 ~ BW 6.00 oct ~  0.5 dB/oct
+    // Maximum Q = 5.763566 ~ BW 0.25 oct ~ 12.0 dB/oct
+    linearInterpolation(0.126984, 5.763566, mu);
+  );
+  
+  // EQ FILTER CLASSES
+  //
+  // Implemented after Andrew Simper's State Variable Filter paper.
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+  //
+  // Per-sample EQ band tick function
+  //
+  function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
+  (
+    v3 = sample - ic2eq; v1 = this.a1 * ic1eq + this.a2 * v3;
+    v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
+    ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
+    (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
+  );
+  //
+  // Peak Filter
+  //
+  function eqPK (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / (Q * A);
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = k * ((A * A) - 1.0); m2 = 0.0;
+  );
+  //
+  // Low shelf filter
+  //
+  function eqLS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = k * (A - 1.0); m2 = sqr(A) - 1.0;
+  );
+  //
+  // High pass filter
+  //
+  function eqHP (SR, Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = -k; m2 = -1.0;
+  );
+  
+  // Banks to store per-filter values
+  filterBand   = 20000;
+  filterActive = 20010;
+  filterGain   = 20020;
+  filterWidth  = 20030;
+  
+  // The filter bands of this EQ model are at fixed frequencies
+  filterBand[0] = 16000;
+  filterBand[1] = 8000;
+  filterBand[2] = 4000;
+  filterBand[3] = 2000;
+  filterBand[4] = 1000;
+  filterBand[5] = 500;
+  filterBand[6] = 250;
+  filterBand[7] = 125;
+  filterBand[8] = 63;
+  filterBand[9] = 31;
+  
+  // Hack to force filter update when the plugin is first loaded
+  filterGain[0] = -1;
+  
+  // ATTACK / RELEASE ENVELOPE
+  //
+  // This will turn a variable into a full envelope container that
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release follower timings.
+  //
+  function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
+  (
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 * fastReciprocal(msAttack  * srate));
+    coeffRel = exp(-1000 * fastReciprocal(msRelease * srate));
+  );
+  //
+  // This calculates the new envelope state for the current sample.
+  // If the current input is above the current envelope state, let
+  // the attack envelope run. If the current input sample is below
+  // the current envelope state, then let the release envelope run.
+  // 
+  // The value should already be abs()-ed by here.
+  //
+  function attRelTick (dBsample) instance (envelope, coeffAtt, coeffRel) local (above, change)
+  (
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
+    
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
+    
+    // If the envelope drops below the minimum gain value, snap it to zero.
+    // Float value 0.0000000630957 is ~ -144 dBfs
+    envelope *= (envelope > 0.0000000630957);
+    
+    // Return the current envelope state
+    envelope;
+  );
+  
+  // Filter used for upsampling
+  function bwLP (Hz, SR, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order;
+    stack = order; a1 = tan($PI * (Hz / SR)); a2 = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step] = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  //
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  
+  // Upsampling filter order, higher is steeper but costs CPU
+  orderUp = 2;
+  
+  // Buffer for upsampling filters
+  bwFilters = 30000;
+  bwSize    = orderUp * 20; // Memory to reserve per BW filter
+  
+  // Oversampled sample rate
+  ovsRate = srate * 2;
+  
+  // WHITE NOISE
+  //
+  // Generates random values between -1 and +1
+  // 
+  function tickWhite ()
+  (
+    ((rand() * 2)-1);
+  );
+  
+  // Noise floor volume according to original device spec sheet.
+  // (This is a PEAK value and will be perceived much quieter.)
+  noiseLevel = dBToGain(-95.0);
+  
+  // Envelope followers for auto-bypass. Fast start, softer stop.
+  envL.attRelSetup(0, 50);
+  envR.attRelSetup(0, 50);
+  
+  // LS+HP+PK filters for slight character bumps in spectrum
+  lsBumpL.eqLS(srate, 120, 0.75, 1.5);
+  lsBumpR.eqLS(srate, 120, 0.75, 1.5);
+  hpBumpL.eqHP(srate, 20, 1.25);
+  hpBumpR.eqHP(srate, 20, 1.25);
+  pkBumpL.eqPK(srate, 12000, 0.5, 1.5);
+  pkBumpR.eqPK(srate, 12000, 0.5, 1.5);
+
+@slider
+  
+  // Turns the slider's dB value into a float gain factor
+  trim = dBToGain(gainAdj);
+  
+  // Check if filter settings need to be recalculated
+  updateFilters  = (band16K != filterGain[0]);
+  updateFilters += (band8K  != filterGain[1]);
+  updateFilters += (band4K  != filterGain[2]);
+  updateFilters += (band2K  != filterGain[3]);
+  updateFilters += (band1K  != filterGain[4]);
+  updateFilters += (band500 != filterGain[5]);
+  updateFilters += (band250 != filterGain[6]);
+  updateFilters += (band125 != filterGain[7]);
+  updateFilters += (band63  != filterGain[8]);
+  updateFilters += (band31  != filterGain[9]);
+  
+@sample
+  
+  // Convenience variable for re-used value
+  sampleRate2x = srate * 2;
+  
+  // Check if project sample rate changed. Might be a bit heavy 
+  // if done per-sample, but should avoid clicks from switching
+  // sample rates mid-block, detuned frequencies, etc.
+  updateFilters += (ovsRate != sampleRate2x);
+  
+  // If the flag to recalculate the filters was set
+  (updateFilters > 0) ?
+  (
+    // Recalculate oversampled sampling rate, just to be safe
+    ovsRate = sampleRate2x;
+    nyquist = ovsRate * 0.5;
+    
+    // Adjust oversampling filters
+    upFilterL.bwLP(nyquist, ovsRate, orderUp, bwFilters);
+    upFilterR.bwLP(nyquist, ovsRate, orderUp, bwFilters+bwSize);
+    
+    // Update flags that determine if filters are calculated
+    // (i.e. only process filters if their gain is non-zero)
+    filterActive[0] = (band16K != 0);
+    filterActive[1] = (band8K  != 0);
+    filterActive[2] = (band4K  != 0);
+    filterActive[3] = (band2K  != 0);
+    filterActive[4] = (band1K  != 0);
+    filterActive[5] = (band500 != 0);
+    filterActive[6] = (band250 != 0);
+    filterActive[7] = (band125 != 0);
+    filterActive[8] = (band63  != 0);
+    filterActive[9] = (band31  != 0);
+    
+    // The filterGain variable is essentially a state memory
+    filterGain[0] = band16K;
+    filterGain[1] = band8K;
+    filterGain[2] = band4K;
+    filterGain[3] = band2K;
+    filterGain[4] = band1K;
+    filterGain[5] = band500;
+    filterGain[6] = band250;
+    filterGain[7] = band125;
+    filterGain[8] = band63;
+    filterGain[9] = band31;
+    
+    // Calculate the Q factor for each filter band. This will
+    // change depending on the band gain.
+    filterWidth[0] = dBToWidth(filterGain[0]);
+    filterWidth[1] = dBToWidth(filterGain[1]);
+    filterWidth[2] = dBToWidth(filterGain[2]);
+    filterWidth[3] = dBToWidth(filterGain[3]);
+    filterWidth[4] = dBToWidth(filterGain[4]);
+    filterWidth[5] = dBToWidth(filterGain[5]);
+    filterWidth[6] = dBToWidth(filterGain[6]);
+    filterWidth[7] = dBToWidth(filterGain[7]);
+    filterWidth[8] = dBToWidth(filterGain[8]);
+    filterWidth[9] = dBToWidth(filterGain[9]);
+    
+    // Initialize active filters with current settings
+    filterActive[0] ? (filterL16K.eqPK(ovsRate, filterBand[0], filterWidth[0], filterGain[0]);
+                       filterR16K.eqPK(ovsRate, filterBand[0], filterWidth[0], filterGain[0]));
+    filterActive[1] ? (filterL8K.eqPK (ovsRate, filterBand[1], filterWidth[1], filterGain[1]);
+                       filterR8K.eqPK (ovsRate, filterBand[1], filterWidth[1], filterGain[1]));
+    filterActive[2] ? (filterL4K.eqPK (ovsRate, filterBand[2], filterWidth[2], filterGain[2]);
+                       filterR4K.eqPK (ovsRate, filterBand[2], filterWidth[2], filterGain[2]));
+    filterActive[3] ? (filterL2K.eqPK (ovsRate, filterBand[3], filterWidth[3], filterGain[3]);
+                       filterR2K.eqPK (ovsRate, filterBand[3], filterWidth[3], filterGain[3]));
+    filterActive[4] ? (filterL1K.eqPK (ovsRate, filterBand[4], filterWidth[4], filterGain[4]);
+                       filterR1K.eqPK (ovsRate, filterBand[4], filterWidth[4], filterGain[4]));
+    filterActive[5] ? (filterL500.eqPK(ovsRate, filterBand[5], filterWidth[5], filterGain[5]);
+                       filterR500.eqPK(ovsRate, filterBand[5], filterWidth[5], filterGain[5]));
+    filterActive[6] ? (filterL250.eqPK(ovsRate, filterBand[6], filterWidth[6], filterGain[6]);
+                       filterR250.eqPK(ovsRate, filterBand[6], filterWidth[6], filterGain[6]));
+    filterActive[7] ? (filterL125.eqPK(ovsRate, filterBand[7], filterWidth[7], filterGain[7]);
+                       filterR125.eqPK(ovsRate, filterBand[7], filterWidth[7], filterGain[7]));
+    filterActive[8] ? (filterL63.eqPK (ovsRate, filterBand[8], filterWidth[8], filterGain[8]);
+                       filterR63.eqPK (ovsRate, filterBand[8], filterWidth[8], filterGain[8]));
+    filterActive[9] ? (filterL31.eqPK (ovsRate, filterBand[9], filterWidth[9], filterGain[9]);
+                       filterR31.eqPK (ovsRate, filterBand[9], filterWidth[9], filterGain[9]));
+    
+    // Filters were just updated, so reset flag
+    updateFilters = 0;
+  );
+  
+  // Process only if there is a signal present
+  (envL.attRelTick(abs(spl0)) != 0 && envR.attRelTick(abs(spl1)) != 0) ?
+  (
+    // Add noise floor to input samples
+    spl0 += tickWhite() * noiseLevel;
+    spl1 += tickWhite() * noiseLevel;
+    
+    // Gain adjustment is one multiplication, this won't generate
+    // any relevant CPU overhead, so skip the conditional checks.
+    spl0 *= trim;
+    spl1 *= trim;
+    
+    // EQ processing for bumps in spectrum, done before upsampling
+    spl0 = lsBumpL.eqTick(spl0);
+    spl1 = lsBumpR.eqTick(spl1);
+    spl0 = hpBumpL.eqTick(spl0);
+    spl1 = hpBumpR.eqTick(spl1);
+    spl0 = pkBumpL.eqTick(spl0);
+    spl1 = pkBumpR.eqTick(spl1);
+    
+    // Upsampling is achieved by stuffing an array of samples with
+    // zeroes, and then running a filter over both the original as
+    // well as the newly added 0 samples. This is necessary so the
+    // filters' states stay in sync with what is going on, at cost
+    // of some extra CPU on top.
+    spl0 = upFilterL.bwTick(spl0);
+    spl1 = upFilterR.bwTick(spl1);
+    upsL = upFilterL.bwTick(0);
+    upsR = upFilterR.bwTick(0);
+    
+    // Process active filters (run over real and stuffed samples)
+    filterActive[0] ? (spl0 = filterL16K.eqTick(spl0);
+                       spl1 = filterR16K.eqTick(spl1);
+                       upsL = filterL16K.eqTick(upsL);
+                       upsR = filterR16K.eqTick(upsR));
+    filterActive[1] ? (spl0 = filterL8K.eqTick(spl0);
+                       spl1 = filterR8K.eqTick(spl1);
+                       upsL = filterL8K.eqTick(upsL);
+                       upsR = filterR8K.eqTick(upsR));
+    filterActive[2] ? (spl0 = filterL4K.eqTick(spl0);
+                       spl1 = filterR4K.eqTick(spl1);
+                       upsL = filterL4K.eqTick(upsL);
+                       upsR = filterR4K.eqTick(upsR));
+    filterActive[3] ? (spl0 = filterL2K.eqTick(spl0);
+                       spl1 = filterR2K.eqTick(spl1);
+                       upsL = filterL2K.eqTick(upsL);
+                       upsR = filterR2K.eqTick(upsR));
+    filterActive[4] ? (spl0 = filterL1K.eqTick(spl0);
+                       spl1 = filterR1K.eqTick(spl1);
+                       upsL = filterL1K.eqTick(upsL);
+                       upsR = filterR1K.eqTick(upsR));
+    filterActive[5] ? (spl0 = filterL500.eqTick(spl0);
+                       spl1 = filterR500.eqTick(spl1);
+                       upsL = filterL500.eqTick(upsL);
+                       upsR = filterR500.eqTick(upsR));
+    filterActive[6] ? (spl0 = filterL250.eqTick(spl0);
+                       spl1 = filterR250.eqTick(spl1);
+                       upsL = filterL250.eqTick(upsL);
+                       upsR = filterR250.eqTick(upsR));
+    filterActive[7] ? (spl0 = filterL125.eqTick(spl0);
+                       spl1 = filterR125.eqTick(spl1);
+                       upsL = filterL125.eqTick(upsL);
+                       upsR = filterR125.eqTick(upsR));
+    filterActive[8] ? (spl0 = filterL63.eqTick(spl0);
+                       spl1 = filterR63.eqTick(spl1);
+                       upsL = filterL63.eqTick(upsL);
+                       upsR = filterR63.eqTick(upsR));
+    filterActive[9] ? (spl0 = filterL31.eqTick(spl0);
+                       spl1 = filterR31.eqTick(spl1);
+                       upsL = filterL31.eqTick(upsL);
+                       upsR = filterR31.eqTick(upsR));
+    
+    // Upsampling generates a "mirror image" of the original 
+    // spectrum, this was already compensated earlier by the
+    // upsampling filter. Because these filters don't create
+    // new harmonic content, it's alright to omit the filter
+    // during downsampling, since no new frequencies need to
+    // be filtered out.
+  )
+  : // If no input signal present (post envelope)
+  (
+    // Force output to silence
+    spl0 = spl1 = 0.0;
+  );
