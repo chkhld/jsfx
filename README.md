@@ -8,7 +8,7 @@ _See the source files for details and instructions._
 [Installation](#installation)<br>
 [Support](#support)
 
-<a name="effects">
+<a name="effects"></a>
 ## Effects
 
 | Screenshot | Plugin | Description |
@@ -43,12 +43,12 @@ _See the source files for details and instructions._
 
 _(There may be more in the future)_
 
-<a name="installation">
+<a name="installation"></a>
 ## Installation
 - The important stuff is in the [plugins](https://github.com/chkhld/jsfx/blob/master/plugins/) folder, so download what you want from there, or [get the full release here](https://github.com/chkhld/jsfx/releases/).
 - If you don't know what to do with these files, watch the [Reaper Blog tutorial](https://reaperblog.net/2015/06/quick-tip-how-to-install-js-plugins/) on how to install JS plugins.
 
-<a name="support">
+<a name="support"></a>
 ## Support
 This is just a fun project for me, I do this on the side to waste time or template C++ code, so don't expect too much of an effort. But if you find any bugs, or if you have any suggestions for improvements, feel free to report them in the [issue tracker](https://github.com/chkhld/jsfx/issues), I'll have a look there every now and then.
 
