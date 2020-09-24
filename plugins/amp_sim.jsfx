@@ -12,18 +12,19 @@
 //
 // NOTE: to save CPU, only the filtering and distortion stages are
 // oversampled. I opted for latency-free IIR based oversampling so
-// it will be heavy enough on CPU as it currently is. While I know
-// that it can be interesting in some scenarios to let a sidechain
-// key be oversampled, I did not think it would be of benefit here.
+// it will be heavy enough on CPU as it currently is. I didn't see
+// any need to oversample the dynamics sections.
 //
-// The gate can be switched to two different positions. Input/"pre"
-// is like a gate pedal between your guitar and the amp input, and
+// The gate can be switched to work in three ways. Input/"pre" has
+// the gate between your guitar and the amp input like an FX pedal.
 // Output/"post" is like having the gate in the FX loop, after the
-// distortion stages.
+// distortion stages. The third mode, Triggered, runs the detector
+// of the gate at the input "pedal" stage, but operates behind the
+// amp, at the "FX loop" stage, after filtering and distortion.
 //
 // I don't want to call it a Tube Screamer, but the pedal boost is
 // somewhat inspired by it. Cuts away some nasty frequencies, adds
-// some distortion, and gives your signal a nice push into the amp.
+// some grit and gives your signal a nice little push into the amp.
 // 
 // The level of input gain will slightly affect what happens later
 // in the amp, the EQ stages will directly affect the image of its
@@ -31,7 +32,7 @@
 //
 // Depth can add some very low-end thump, Presence will add lively
 // top-end sparkle. Both will respond to the incoming signal level,
-// which can create a very dynamic feeling if correctly dosed.
+// which can create a very dynamic experience - if correctly dosed.
 //
 // The maximizer section is a gnarly compressor that adds movement
 // or squashes your signal into a sausage. Use sparingly but don't
@@ -47,7 +48,7 @@ slider1:channels=0<0,2,1{Stereo,Mono (left),Mono (right)}> Routing
 slider3:ovs=1<0,4,1{Off,2x,4x,8x,16x}> Oversampling
 slider4:filter=1<0,3,1{Relaxed,Normal,Heavy,Insane}> Ovs. Filtering
 slider6:inGate=-96<-96,0,0.02> Gate Threshold [dB]
-slider7:gatePos=0<0,1,1{Input,Output}> Gate Position
+slider7:gatePos=0<0,2,1{Input (pre pedal),Output (post amp),Triggered (detect pre & gate post)}> Gate Position
 slider9:booster=0<0,1,1{Bypass,Enabled}> Pedal Boost
 slider10:volIn=50<0, 100, 0.01> Input Gain [%]
 slider12:eqLow=0<-1,1,0.01> Low : EQ
@@ -58,32 +59,96 @@ slider17:presence=0.5<0,1,0.01> Presence
 slider19:maximize=-3<-6,0,0.01> Maximizer [dB]
 slider20:volOut=0<-12, 12, 0.01> Output Trim [dB]
   
-in_pin:left input
-in_pin:right input
-out_pin:left output
-out_pin:right output
-  
+in_pin:Input L
+in_pin:Input R
+out_pin:Output L
+out_pin:Output R
+
 @init
   
-  // Convenience variables
-  halfPi = $PI * 0.5;
-  pi     = $PI;
-  twoPi  = $PI * 2.0;
+  // Convenience constant
+  math.twoPi = $PI * 2.0;
   
-  // Buffer for upsampled samples
-  ups = 100000;
+  // Convert Decibel values to float gain factors
+  function dBToGain (decibels) (10.0 ^ (decibels * 0.05)); // 1*0.05 = 1/20
   
-  // Default oversampling settings
-  ovsX  = -1;
-  ovsSR = 0;
+  // Accelerated 1/x calculation
+  function fastReciprocal (value) (sqr(invsqrt(value)));
   
+  // HARD CLIPPING -------------------------------------------------------------
+  //
+  // Most basic "if larger than ceiling, set to ceiling" clamping
+  //
+  function hard (sample) (max(-1.0, min(1.0, sample)));
+  
+  // SOFT CLIPPING -------------------------------------------------------------
+  //
+  // Hyperbolic Tangent implemented after code by nVidia
+  // https://developer.download.nvidia.com/cg/tanh.html
+  //
+  function soft (sample) local (exp2x)
+  (
+    exp2x = exp(2.0 * sample);
+    (exp2x - 1.0) * fastReciprocal(exp2x + 1.0);
+  );
+  
+  // VARIOUS INTERPOLATION METHODS
+  // 
+  // Return interpolated value at position [0,1] between
+  // two not necessarily related input values.
+  // 
+  // Implemented after Paul Bourke and Lewis Van Winkle
+  // http://paulbourke.net/miscellaneous/interpolation/
+  // https://codeplea.com/simple-interpolation
+  // 
+  // Basic linear interpolation -- constant speed
+  //
+  function linearInterpolation (value1, value2, position)
+  (
+    (value1 * (1.0 - position) + value2 * position);
+  );
+  //
+  // Decelerated interpolation -- fast start, slow stop
+  function decelerate (value)
+  (
+    linearInterpolation(0.0, 1.0, 1.0 - sqr(1.0 - value));
+  );
+  
+  // DC BLOCKING FILTER --------------------------------------------------------
+  //
+  // Implemented after Julius O. Smith III
+  // https://ccrma.stanford.edu/~jos/filters/DC_Blocker_Software_Implementations.html
+  //
+  function dcBlock () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn   = this;
+    this = stateOut;
+  );
+  
+  // BOOSTER THINGS ------------------------------------------------------------
+  // 
+  // Booster pedal has fixed drive value
+  //
+  booster.drive = dBToGain(24);
+  
+  // OVERSAMPLING VARIABLES ----------------------------------------------------
+  //
+  // Default settings
+  //
+  oversampling.buffer = 200000; // Buffer for upsampled samples
+  oversampling.ratio  = -1;     // Up-/downsampling ratio
+  oversampling.srate  = 0;      // Upsampled samplerate
+  //
   // Order of up-/downsampling filters. These values should NOT
   // be updated immediately after the setting changes on the UI,
   // otherwise the filter parameters may change mid-processing,
   // which could have nasty side-effects.
-  orderUp = -1;
-  orderDn = -1;
-  
+  //
+  oversampling.filters.up.order = -1;
+  oversampling.filters.dn.order = -1;
+  //
   // Flag that is set to 1 if filter values or sample rates change.
   // Filters need to be recalculated when sliders change and when
   // the oversampling factor changes. These two events can occur at
@@ -92,109 +157,77 @@ out_pin:right output
   // to just switch a flag on if required, and reinitialize all the
   // filters at one point in the @sample section. This will result
   // in filters not responding to changes absolutely immediately.
-  filtersNeedRecalculating = 0;
+  //
+  filters.recalculate = 0;
   
-  // Convert Decibel values to float gain factors
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
-  
-  // HARD CLIPPING
+  // EQ FILTER CLASSES ---------------------------------------------------------
   //
-  // Most basic "if larger than ceiling, set to ceiling" clamping
+  // Implemented after Andrew Simper's State Variable Filter paper
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
   //
-  function hard (sample) (max(-1.0, min(1.0, sample)));
-  
-  // SOFT CLIPPING
-  //
-  // Hyperbolic Tangent implemented after code by Antto on KVR
-  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
-  //
-  function soft (sample) local (polarity, xa, x2, x3, x4, x7, fact1, fact2, fact3)
-  (
-    expPos = exp(sample);
-    expNeg = 1.0 / expPos; // exp(-number)
-    (expPos - expNeg) / (expPos + expNeg);
-  );
-  
-  // DC BLOCKER
-  //
-  function dcBlock () instance (stateIn, stateOut)
-  (
-    stateOut *= 0.99988487;
-    stateOut += this - stateIn;
-    stateIn = this;
-    this = stateOut;
-  );
-  
-  // EQ CLASSES
-  //
-  // Implemented after Andy Simper's (Cytomic) Biquad Paper.
-  // If you want to know what these do and how and why, go
-  // find his PDF (it's everywhere on the Web) and read it. :)
+  // Per-sample processing function
   //
   function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
   (
-    v3 = sample - ic2eq;
-    v1 = this.a1 * ic1eq + this.a2 * v3;
+    v3 = sample - ic2eq; v1 = this.a1 * ic1eq + this.a2 * v3;
     v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
     ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
     (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
   );
   //
-  function eqBand (Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  // Peak filter
+  //
+  function eqPK (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
   (
-    A = pow(10.0, dB * 0.025); g = tan(pi * (Hz / ovsSR)); k = 1.0 / (Q * A);
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / (Q * A);
     a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
     m0 = 1.0; m1 = k * ((A * A) - 1.0); m2 = 0.0;
   );
   //
-  function eqHP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  // High pass filter
+  //
+  function eqHP (SR, Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
   (
-    g = tan(halfPi * (Hz / ovsSR)); k = 1.0 / Q;
+    g = tan($PI * (Hz / SR)); k = 1.0 / Q;
     a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
     m0 = 1.0; m1 = -k; m2 = -1.0;
   );
   //
-  function eqLP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  // Low pass filter
+  //
+  function eqLP (SR, Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
   (
-    g = tan(halfPi * (Hz / ovsSR)); k = 1.0 / Q;
+    g = tan($PI * (Hz / SR)); k = 1.0 / Q;
     a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
     m0 = 0.0; m1 = 0.0; m2 = 1.0;
   );
   //
-  function eqLS (Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  // Low shelf filter
+  //
+  function eqLS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
   (
-    A = pow(10.0, dB * 0.025); g = tan(halfPi * (Hz / ovsSR)); k = 1.0 / Q;
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
     a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
     m0 = 1.0; m1 = k * (A - 1.0); m2 = sqr(A) - 1.0;
   );
   //
-  function eqHS (Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  // High shelf filter
+  //
+  function eqHS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
   (
-    A = pow(10.0, dB * 0.025); g = tan(halfPi * (Hz / ovsSR)); k = 1.0 / Q;
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
     a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
     m0 = sqr(A); m1 = k * (1.0 - A) * A; m2 = 1.0 - m0;
   );
   
-  // ONE POLE LOW PASS
+  // BUTTERWORTH FILTER WITH VARIABLE ORDER ------------------------------------
   //
-  function rcLP   (Hz)     instance (a0, b1) (b1 = exp(-twoPi * (Hz / ovsSR)); a0 = 1.0 - b1);
-  function rcTick (sample) instance (z1)     (z1 = (sample * this.a0) + (z1 * this.b1); z1);
-  
-  // Filter used for up- and downsampling
-  function bwLP (Hz, SR, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) 
-                                           local    (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
-  (
-    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order;
-    stack = order; a1  = tan(pi * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
-    while (step < order)
-    (
-      r   = sin(pi * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2  = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
-      a[step]  = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
-    );
-  );
+  // Implemented after Exstrom Laboratories LLC
+  // http://www.exstrom.com/journal/sigproc/
   //
-  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) 
-                           local    (output, step)
+  // Per-sample processing function
+  //
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
   (
     output = sample; step = 0;
     while (step < stack)
@@ -205,109 +238,177 @@ out_pin:right output
     );
     output;
   );
+  //
+  // Low pass filter
+  //
+  function bwLP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2 = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step] = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
   
+  // FILTER UPDATING FUNCTION --------------------------------------------------
+  //
   // Updates filter instances with new sample rate and coefficients.
   // Instead of running this function all over the place and risking
   // a serious performance hit, it will only truly run if the recalc
   // flag has been set, no matter where and how often it is called.
+  //
   function updateFilters ()
   (
     // Only proceed with updating if the flag to do so has been set
-    filtersNeedRecalculating ?
+    filters.recalculate ?
     (
-      // Update and re-initialize all the filters here
-      booster.hpL.eqHP(400, 0.2);
-      booster.hpR.eqHP(400, 0.2);
+      // Booster high pass
+      booster.hpL.eqHP(oversampling.srate, 250, 0.25);
+      booster.hpR.eqHP(oversampling.srate, 250, 0.25);
       
-      booster.lpL.rcLP(320);
-      booster.lpR.rcLP(320);
+      // Booster low pass
+      booster.lpL.eqLP(oversampling.srate, 3500, 0.15);
+      booster.lpR.eqLP(oversampling.srate, 3500, 0.15);
       
-      amp.input.hpL.eqHP(200 + (600 * amp.input.filterAmount), 0.5);
-      amp.input.hpR.eqHP(200 + (600 * amp.input.filterAmount), 0.5);
+      // Amp input "tilt" filter
+      amp.input.tilt.freq = 1000;
+      amp.input.tilt.wide = 0.5;
+      amp.input.tilt.gain = 1 + (3 * amp.input.filterAmount); 
+      amp.input.tiltL.ls.eqLS(oversampling.srate, amp.input.tilt.freq, amp.input.tilt.wide, -amp.input.tilt.gain);
+      amp.input.tiltR.ls.eqLS(oversampling.srate, amp.input.tilt.freq, amp.input.tilt.wide, -amp.input.tilt.gain);
+      amp.input.tiltL.hs.eqHS(oversampling.srate, amp.input.tilt.freq, amp.input.tilt.wide, +amp.input.tilt.gain);
+      amp.input.tiltR.hs.eqHS(oversampling.srate, amp.input.tilt.freq, amp.input.tilt.wide, +amp.input.tilt.gain);
       
-      amp.input.lpL.eqLP(14000 - (10000 * amp.input.filterAmount), 1.0);
-      amp.input.lpR.eqLP(14000 - (10000 * amp.input.filterAmount), 1.0);
+      // Amp input high pass
+      amp.input.freq.hp = 50 + (200 * amp.input.filterAmount);
+      amp.input.hpL.eqHP(oversampling.srate, amp.input.freq.hp, 0.5);
+      amp.input.hpR.eqHP(oversampling.srate, amp.input.freq.hp, 0.5);
+            
+      // Amp input low pass
+      amp.input.freq.lp = 14000 - (10000 * amp.input.filterAmount);
+      amp.input.lpL.eqLP(oversampling.srate, amp.input.freq.lp, 0.5);
+      amp.input.lpR.eqLP(oversampling.srate, amp.input.freq.lp, 0.5);
       
-      amp.input.eq1L.eqLS  (350,  1.5, -4.0 * amp.input.filterAmount);
-      amp.input.eq1R.eqLS  (350,  1.5, -4.0 * amp.input.filterAmount);
-      amp.input.eq2L.eqBand(250,  2.0, -9.0 * amp.input.filterAmount);
-      amp.input.eq2R.eqBand(250,  2.0, -9.0 * amp.input.filterAmount);
-      amp.input.eq3L.eqBand(500,  1.5, -9.0 * amp.input.filterAmount);
-      amp.input.eq3R.eqBand(500,  1.5, -9.0 * amp.input.filterAmount);
-      amp.input.eq4L.eqBand(750,  2.0, -3.0 * amp.input.filterAmount);
-      amp.input.eq4R.eqBand(750,  2.0, -3.0 * amp.input.filterAmount);
-      amp.input.eq5L.eqBand(6660, 1.5, -9.0 * amp.input.filterAmount);
-      amp.input.eq5R.eqBand(6660, 1.5, -9.0 * amp.input.filterAmount);
+      // Amp "gain character" shaping filters
+      amp.input.eq1L.eqPK(oversampling.srate,  150, 2.5, -3.0 * amp.input.filterAmount);
+      amp.input.eq1R.eqPK(oversampling.srate,  150, 2.5, -3.0 * amp.input.filterAmount);
+      amp.input.eq2L.eqPK(oversampling.srate,  600, 1.5, -6.0 * amp.input.filterAmount);
+      amp.input.eq2R.eqPK(oversampling.srate,  600, 1.5, -6.0 * amp.input.filterAmount);
+      amp.input.eq3L.eqPK(oversampling.srate,  750, 1.5, +3.0 * amp.input.filterAmount);
+      amp.input.eq3R.eqPK(oversampling.srate,  750, 1.5, +3.0 * amp.input.filterAmount);
+      amp.input.eq4L.eqPK(oversampling.srate, 2000, 2.0, -3.0 * amp.input.filterAmount);
+      amp.input.eq4R.eqPK(oversampling.srate, 2000, 2.0, -3.0 * amp.input.filterAmount);
+      amp.input.eq5L.eqPK(oversampling.srate,  120, 2.0, -2.0 * amp.input.filterAmount);
+      amp.input.eq5R.eqPK(oversampling.srate,  120, 2.0, -2.0 * amp.input.filterAmount);
       
-      amp.eq.band1L.eqLS(   200, 0.25 + abs(eqLow)  * 0.25, 0 + eqLow  * 4.5);
-      amp.eq.band1R.eqLS(   200, 0.25 + abs(eqLow)  * 0.25, 0 + eqLow  * 4.5);
-      amp.eq.band2L.eqBand( 800, 0.25 + abs(eqMid)  * 0.25, 0 + eqMid  * 4.5);
-      amp.eq.band2R.eqBand( 800, 0.25 + abs(eqMid)  * 0.25, 0 + eqMid  * 4.5);
-      amp.eq.band3L.eqHS(  2000, 0.25 + abs(eqHigh) * 0.25, 0 + eqHigh * 4.5);
-      amp.eq.band3R.eqHS(  2000, 0.25 + abs(eqHigh) * 0.25, 0 + eqHigh * 4.5);
+      // Amp output "tilt" reversion filter
+      amp.output.tilt.freq = 10000;
+      amp.output.tilt.wide = 0.25;
+      amp.output.tilt.gain = 3 + (3 * amp.input.filterAmount);
+      amp.output.tiltL.ls.eqLS(oversampling.srate, amp.output.tilt.freq, amp.output.tilt.wide, +amp.output.tilt.gain);
+      amp.output.tiltR.ls.eqLS(oversampling.srate, amp.output.tilt.freq, amp.output.tilt.wide, +amp.output.tilt.gain);
+      amp.output.tiltL.hs.eqHS(oversampling.srate, amp.output.tilt.freq, amp.output.tilt.wide, -amp.output.tilt.gain);
+      amp.output.tiltR.hs.eqHS(oversampling.srate, amp.output.tilt.freq, amp.output.tilt.wide, -amp.output.tilt.gain);
+      
+      // Amp 3-band EQ stages
+      amp.eq.band1L.eqLS(oversampling.srate,  350, 0.25 + abs(eqLow)  * 1.0, 0 + eqLow  * 4.5);
+      amp.eq.band1R.eqLS(oversampling.srate,  350, 0.25 + abs(eqLow)  * 1.0, 0 + eqLow  * 4.5);
+      amp.eq.band2L.eqPK(oversampling.srate,  750, 0.5  + abs(eqMid)  * 1.0, 0 + eqMid  * 4.5);
+      amp.eq.band2R.eqPK(oversampling.srate,  750, 0.5  + abs(eqMid)  * 1.0, 0 + eqMid  * 4.5);
+      amp.eq.band3L.eqHS(oversampling.srate, 2500, 0.2  + abs(eqHigh) * 0.5, 0 + eqHigh * 6);
+      amp.eq.band3R.eqHS(oversampling.srate, 2500, 0.2  + abs(eqHigh) * 0.5, 0 + eqHigh * 6);
+      
+      // Resonant ~10 kHz "hissing" peak
+      amp.output.tenKL.eqPK(oversampling.srate, 9000, 2, 22.0);
+      amp.output.tenKR.eqPK(oversampling.srate, 9000, 2, 22.0);
+      
+      // Depth and presence filters
+      amp.eq.depthL.eqPK   (oversampling.srate,  100, 1.75, 12.0);
+      amp.eq.depthR.eqPK   (oversampling.srate,  100, 1.75, 12.0);
+      amp.eq.presenceL.eqPK(oversampling.srate, 6000, 0.25, 12.0);
+      amp.eq.presenceR.eqPK(oversampling.srate, 6000, 0.25, 12.0);
       
       // Once all the filters have been updated, disable the recalc flag
-      // so that this function doesn't re-initialize all these settings
-      // right away when then next sample comes in.
-      filtersNeedRecalculating = 0;
+      // so that this function doesn't re-initialize all settings again,
+      // just because then next sample comes in.
+      filters.recalculate = 0;
     );
   );
   
-  // If the oversampling parameters were updated immediately when
-  // the sliders/dropdowns change, that could cause undesirable
-  // side effects if happens in the middle of a calculation run.
-  // 
-  // Instead of altering the variables right away, check first if
-  // the new values have changed at all, and only trigger updates
-  // if that is the case. This saves CPU from calculating filter
-  // coefficients less frequently, and it guarantees that values
-  // will only change when this function is called, and only then.
+  // UPDATE OVERSAMPLING FACTOR ------------------------------------------------
   //
-  function updateOversamplingX () local (newX, newSR, newUp, newDn)
+  // If the oversampling parameters were updated immediately when
+  // the sliders/dropdowns change, that would lead to undesirable
+  // side effects should it happen in the middle of a calculation
+  // run. Upsample by 4x, change factor, update ratio, downsample
+  // by 2x, instant potential for evil blow-ups.
+  // 
+  // Instead of altering the variables right away, update them as
+  // the initial thing in every per-sample loop step. Check first
+  // that the values have indeed changed, and only recalculate if
+  // that's really the case. This saves CPU cycles because filter
+  // coefficients have to be calculated less frequently.
+  //
+  function updateOversamplingX ()
   (
-    // Calculate new values, "just in case" and to compare
-    newX  = pow(2, ovs); // 0,1,2,3 -> 1,2,4,8
-    newSR = srate * newX;
-    newUp = 2^(filter+1);
-    newDn = 2^(filter+2);
+    // Calculate new values to compare with current
+    oversampling.new.ratio = pow(2, ovs); // 0,1,2,3 -> 1,2,4,8; 'ovs' = slider3
+    oversampling.new.srate = srate * oversampling.new.ratio;
+    oversampling.new.filters.up.order = 2^(filter+1); // 'filter' = slider4
+    oversampling.new.filters.dn.order = 2^(filter+2);
     
     // Check if the new values have in any way changed from the
     // previous values, and only if that is the case...
-    ((newX != ovsX) || (newSR != ovsSR) || (newUp != orderUp) || (newDn != orderDn)) ? 
+    ((oversampling.new.ratio != oversampling.ratio) || 
+     (oversampling.new.srate != oversampling.srate) || 
+     (oversampling.new.filters.up.order != oversampling.filters.up.order) || 
+     (oversampling.new.filters.dn.order != oversampling.filters.dn.order)) ? 
     (
-      // Update the variables that are used in code with the new
-      // values, because when this function is called, it's safe
-      // to do so.
-      ovsX  = newX;
-      ovsSR = newSR;
-      orderUp = newUp;
-      orderDn = newDn;
+      // Update the processing variables with the new values, because
+      // because when this section is called, it is safe to do that.
+      oversampling.ratio = oversampling.new.ratio;
+      oversampling.srate = oversampling.new.srate;
+      oversampling.filters.up.order = oversampling.new.filters.up.order;
+      oversampling.filters.dn.order = oversampling.new.filters.dn.order;
       
       // Update the filter instances with the new settings.
       // Since these operate at oversampled sample rate, it
       // should be fine to have them set really high. In my
-      // tests these values worked fine, although a filter
-      // at 22 kHz needs to be REALLY steep to cut off all
-      // nasties above 22.05 kHz. :)
-      upFilterL.bwLP(22050, ovsSR, orderUp, 200000);
-      upFilterR.bwLP(22050, ovsSR, orderUp, 201000);
+      // tests these values did just fine. Filters at 22kHz
+      // need to be REALLY steep to truly cut off all audio
+      // nasties above and stop them from "folding back" as
+      // aliasing artefacts. Oh, "insane" filtering is slow
+      // on your machine? Well, tuff. Get a better CPU then. ;)
+      upFilterL.bwLP(oversampling.srate, 22050, oversampling.filters.up.order, 100000);
+      upFilterR.bwLP(oversampling.srate, 22050, oversampling.filters.up.order, 101000);
+      dnFilterL.bwLP(oversampling.srate, 22000, oversampling.filters.dn.order, 102000);
+      dnFilterR.bwLP(oversampling.srate, 22000, oversampling.filters.dn.order, 103000);
       
-      dnFilterL.bwLP(22000, ovsSR, orderDn, 202000);
-      dnFilterR.bwLP(22000, ovsSR, orderDn, 203000);
-      
-      // Switch the flag on to have filter settings recalculated
-      filtersNeedRecalculating = 1;
+      // Oversampling settings were changed, so switch the
+      // flag on that lets filter settings be recalculated.
+      filters.recalculate = 1;
     );
   );
   
-  // ENVELOPE FOLLOWER
+  // ATTACK / RELEASE ENVELOPE -------------------------------------------------
   //
-  function envSetup (msAttack, msRelease) instance (envelope, attack, release) local ()
+  // This will turn a variable into a full envelope container that
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release followers.
+  //
+  function envSetup (SR, msAttack, msRelease) instance (envelope, attack, release) local ()
   (
-    attack  = pow(0.01, 1.0 / ( msAttack * srate * 0.001 ));
-    release = pow(0.01, 1.0 / (msRelease * srate * 0.001 ));
+    attack  = pow(0.01, fastReciprocal( msAttack * SR * 0.001 ));
+    release = pow(0.01, fastReciprocal(msRelease * SR * 0.001 ));
   );
-  
+  //
+  // This calculates the new envelope state for the current sample.
+  // If the current input is above the current envelope state, let
+  // the attack envelope run. If the current input sample is below
+  // the current envelope state, then let the release envelope run.
+  //
   function envFollow (sample) instance () local (absolute)
   (
     absolute = abs(sample);
@@ -315,169 +416,252 @@ out_pin:right output
     this.envelope;
   );
   
-  // LEFT CHANNEL PROCESSING
+  // LEFT CHANNEL PROCESSING ---------------------------------------------------
   //
   // Conveniently groups all the processing steps that should be
   // oversampled (filters and distortion) into a single function
-  // so that it can easily be run over zero-stuffed dead samples.
-  function processLeft (sample)
+  // so that it can easily be run over buffers with zero-stuffed
+  // dead samples without hard-to-maintain code redundancies.
+  //
+  function processLeft (sample) local (samplePositive, sampleNegative, depthSample, presenceSample)
   (
     // If the booster pedal is activated
-    booster == 1 ?
+    (booster == 1) ?
     (
-      // Run a high-pass over the processing sample
-      sample  = booster.hpL.eqTick(sample);
+      // Apply high-pass filter to input sample
+      sample = booster.hpL.eqTick(sample);
       
-      // Boost the signal
-      sample *= booster.drive;
+      // Run low-pass filter over high-passed sample
+      sample = booster.lpL.eqTick(sample);
       
-      // Run distortion on the input sample, run a simple low-pass
-      // filter on a copy of the input sample, then mix the two in
-      // order to prep the signal for distortion in later stages.
-      sample  = atan(sample) * 0.5 + booster.lpL.rcTick(sample) * 0.5;
+      // Boost and distort the sample
+      sample = soft(sample * booster.drive);
     );
     
-    // Run the various filtering, gain adjustment and distortion 
-    // stages over the processing sample.
+    // INPUT STAGE FILTERING
+    //
+    sample = amp.input.tiltL.ls.eqTick(sample);
+    sample = amp.input.tiltL.hs.eqTick(sample);
     sample = amp.input.hpL.eqTick(sample);
     sample = amp.input.lpL.eqTick(sample);
     
-    sample *= 1 + amp.input.gain * 1.25;
-    sample = atan(sample);
+    // SAMPLE POLARITY CHECK
+    //
+    samplePositive = (sample >= 0);
+    sampleNegative = !samplePositive;
     
-    sample = amp.input.eq3L.eqTick(sample);
-    sample = amp.input.eq5L.eqTick(sample);
+    // DISTORTION STAGE 1
+    //
+    // Hard-clip positive samples, soft-clip negative ones
+    //
+    sample *= amp.input.dist1.gain;
+    sample  = (samplePositive * hard(sample)) + (sampleNegative * soft(sample));
+    sample *= 0.5;
     
-    sample *= 1 + amp.input.gain * 0.5;
-    sample = hard(sample);
-    
+    // FILTER STAGES 1+2
+    //
+    sample = amp.input.eq1L.eqTick(sample);
     sample = amp.input.eq2L.eqTick(sample);
     
-    sample *= 1 + amp.input.gain;
-    sample = soft(sample) * 0.5;
+    // DISTORTION STAGE 2
+    //
+    // Atan-clip positive samples, hard-clip negative ones
+    //
+    sample *= amp.input.dist2.gain;
+    sample  = (samplePositive * atan(sample)) + (sampleNegative * hard(sample));
+    sample *= 0.4;
     
+    // FILTER STAGE 3
+    //
+    sample = amp.input.eq3L.eqTick(sample);
+    
+    // DISTORTION STAGE 3
+    //
+    sample *= amp.input.dist3.gain;
+    sample  = hard(sample);
+    sample *= 0.5;
+    
+    // FILTER STAGE 4
+    // 
     sample = amp.input.eq4L.eqTick(sample);
     
-    sample *= 1 + amp.input.gain * 1.25;
-    sample = atan(sample) * 0.5;
+    // DISTORTION STAGE 4
+    //
+    sample *= amp.input.dist4.gain;
+    sample = (samplePositive * atan(sample)) + (sampleNegative * soft(sample));
+    sample *= 0.25;
     
-    sample = amp.input.eq1L.eqTick(sample);
+    // FILTER STAGE 5
+    //
+    sample = amp.input.eq5L.eqTick(sample);
     
-    sample *= 1 + amp.input.gain * 1;
-    sample = soft(sample) * 0.5;
+    // DISTORTION STAGE 5
+    //
+    sample *= amp.input.dist5.gain;
+    sample = (samplePositive * soft(sample)) + (sampleNegative * hard(sample));
+    sample *= 0.25;
     
+    // OUTPUT STAGE FILTERING
+    //
+    sample = amp.output.tiltL.ls.eqTick(sample);
+    sample = amp.output.tiltL.hs.eqTick(sample);
+    sample *= 0.5;
+    
+    // 3-BAND EQ
+    //
     sample = amp.eq.band1L.eqTick(sample);
     sample = amp.eq.band2L.eqTick(sample);
     sample = amp.eq.band3L.eqTick(sample);
-    sample *= 0.7;
     
+    // RESONANT ~10 KHZ PEAK
+    //
+    sample = amp.output.tenKL.eqTick(sample);
+    
+    // DEPTH AND PRESENCE
+    //
     // Depth and Presence EQ settings depend on the signal envelope,
-    // i.e. the effect becomes harsher at increasing signal volumes.
-    sample = amp.eq.depthL.eqTick(sample);
-    sample *= 0.7;
-    
-    sample = amp.eq.presenceL.eqTick(sample);
-    sample *= 0.7;
+    // i.e. the effect becomes more obvious as signal volume rises.
+    //
+    // Run both dynamic filters over the signal sample first, also
+    // compensate their volume before summing together with sample.
+    depthSample    = depth    * envL * amp.eq.depthL.eqTick(sample)    * 0.5;
+    presenceSample = presence * envL * amp.eq.presenceL.eqTick(sample) * 0.5;
+    //
+    // Sum the dynamically filtered samples with the regular sample
+    sample += depthSample + presenceSample;
+    //
+    // Compensate for adding multiple audio signals together
+    sample *= 0.6;
     
     // Return the processed output
     sample;
   );
   
-  // RIGHT CHANNEL PROCESSING
+  // RIGHT CHANNEL PROCESSING --------------------------------------------------
   //  
-  // Conveniently groups all the processing steps that should be
-  // oversampled (filters and distortion) into a single function
-  // so that it can easily be run over zero-stuffed dead samples.
-  function processRight (sample)
+  // Same as left channel but... for... uh, the right channel.
+  //
+  function processRight (sample) local (samplePositive, sampleNegative, depthSample, presenceSample)
   (
-    booster == 1 ?
+    (booster == 1) ?
     (
-      sample  = booster.hpR.eqTick(sample);
-      sample *= booster.drive;
-      sample  = atan(sample) * 0.5 + booster.lpR.rcTick(sample) * 0.5;
+      sample = booster.hpR.eqTick(sample);
+      sample = booster.lpR.eqTick(sample);
+      sample = soft(sample * booster.drive);
     );
     
+    sample = amp.input.tiltR.ls.eqTick(sample);
+    sample = amp.input.tiltR.hs.eqTick(sample);
     sample = amp.input.hpR.eqTick(sample);
     sample = amp.input.lpR.eqTick(sample);
     
-    sample *= 1 + amp.input.gain * 1.25;
-    sample = atan(sample);
+    samplePositive = (sample >= 0);
+    sampleNegative = !samplePositive;
     
-    sample = amp.input.eq3R.eqTick(sample);
-    sample = amp.input.eq5R.eqTick(sample);
+    sample *= amp.input.dist1.gain;
+    sample  = (samplePositive * hard(sample)) + (sampleNegative * soft(sample));
+    sample *= 0.5;
     
-    sample *= 1 + amp.input.gain * 0.5;
-    sample = hard(sample);
-    
+    sample = amp.input.eq1R.eqTick(sample);
     sample = amp.input.eq2R.eqTick(sample);
     
-    sample *= 1 + amp.input.gain;
-    sample = soft(sample) * 0.5;
+    sample *= amp.input.dist2.gain;
+    sample  = (samplePositive * atan(sample)) + (sampleNegative * hard(sample));
+    sample *= 0.4;
+    
+    sample = amp.input.eq3R.eqTick(sample);
+    
+    sample *= amp.input.dist3.gain;
+    sample  = hard(sample);
+    sample *= 0.5;
     
     sample = amp.input.eq4R.eqTick(sample);
     
-    sample *= 1 + amp.input.gain * 1.25;
-    sample = atan(sample) * 0.5;
+    sample *= amp.input.dist4.gain;
+    sample = (samplePositive * atan(sample)) + (sampleNegative * soft(sample));
+    sample *= 0.25;
     
-    sample = amp.input.eq1R.eqTick(sample);
+    sample = amp.input.eq5R.eqTick(sample);
     
-    sample *= 1 + amp.input.gain * 1;
-    sample = soft(sample) * 0.5;
+    sample *= amp.input.dist5.gain;
+    sample = (samplePositive * soft(sample)) + (sampleNegative * hard(sample));
+    sample *= 0.25;
+    
+    sample = amp.output.tiltR.ls.eqTick(sample);
+    sample = amp.output.tiltR.hs.eqTick(sample);
+    sample *= 0.5;
     
     sample = amp.eq.band1R.eqTick(sample);
     sample = amp.eq.band2R.eqTick(sample);
     sample = amp.eq.band3R.eqTick(sample);
-    sample *= 0.7;
     
-    sample = amp.eq.depthR.eqTick(sample);
-    sample *= 0.7;
+    sample = amp.output.tenKR.eqTick(sample);
     
-    sample = amp.eq.presenceR.eqTick(sample);
-    sample *= 0.7;
+    depthSample    = depth    * envL * amp.eq.depthR.eqTick(sample)    * 0.5;
+    presenceSample = presence * envL * amp.eq.presenceR.eqTick(sample) * 0.5;
+    
+    sample += depthSample + presenceSample;
+    sample *= 0.6;
     
     sample;
   );
   
-  // Fixed setting, maximum drive value for pedal booster
-  booster.drive = dBToGain(24);
-  
+  // ENVELOPE DEFINITIONS ------------------------------------------------------
+  //
   // Envelopes run at project sample rate and their settings don't
   // change at runtime, so they're safe to be initialized here.
-  amp.envL.envSetup(5, 1500);
-  amp.envR.envSetup(5, 1500);
+  //
+  amp.envL.envSetup(srate, 50, 100);
+  amp.envR.envSetup(srate, 50, 100);
   
-  dynamics.gate.envL.envSetup(5, 125);
-  dynamics.gate.envR.envSetup(5, 125);
+  dynamics.gate.envL.envSetup(srate, 5, 125);
+  dynamics.gate.envR.envSetup(srate, 5, 125);
   
-  dynamics.gate.revL.envSetup(15, 250);
-  dynamics.gate.revR.envSetup(15, 250);
+  dynamics.gate.revL.envSetup(srate, 15, 250);
+  dynamics.gate.revR.envSetup(srate, 15, 250);
   
-  dynamics.maximizer.envL.envSetup(0.1, 0.1);
-  dynamics.maximizer.envR.envSetup(0.1, 0.1);
+  dynamics.maximizer.envL.envSetup(srate, 0.1, 0.1);
+  dynamics.maximizer.envR.envSetup(srate, 0.1, 0.1);
   
-  dynamics.maximizer.revL.envSetup(50, 10);
-  dynamics.maximizer.revR.envSetup(50, 10);
+  dynamics.maximizer.revL.envSetup(srate, 10, 150);
+  dynamics.maximizer.revR.envSetup(srate, 10, 150);
   
-@slider
+@slider // ---------------------------------------------------------------------
+  
+  // Convenience evaluations for gate processor positioning
+  dynamics.gate.active        = (inGate > -96);
+  dynamics.gate.position.pre  = (gatePos == 0);
+  dynamics.gate.position.post = (gatePos == 1);
+  dynamics.gate.position.trig = (gatePos == 2);
   
   // Recalculate various threshold and gain values
   dynamics.gate.threshold = dBToGain(inGate);
   dynamics.maximizer.threshold = dBToGain(maximize); // 0 - -6
   dynamics.maximizer.gain = dBToGain(-maximize); // 0 - +6
   
-  amp.input.gain  = dBToGain(VolIn / 7);
+  // Amp input stage gain
+  amp.input.gain  = dBToGain(decelerate(VolIn * 0.01) * 16.0);
+  
+  // Amp distortion stage gains
+  amp.input.dist1.gain = amp.input.gain * 1.5;
+  amp.input.dist2.gain = amp.input.gain * 0.85;
+  amp.input.dist3.gain = amp.input.gain * 1.25;
+  amp.input.dist4.gain = amp.input.gain * 1.25;
+  amp.input.dist5.gain = amp.input.gain * 0.75;
+  
+  // Amp output trim gain
   amp.output.gain = dbToGain(volOut);
   
   // Some filter stages change their settings depending on the amp's
   // input gain, the filter amount is the normalized gain percentage.
   // Might play around with skewing this line into a curve, possibly.
-  amp.input.filterAmount = volIn / 100; // [0-1]
+  amp.input.filterAmount = volIn * 0.01; // [0-1] linear
   
   // Since some filters are linked to amp.input.filterAmount, set
   // the recalc flag here to have them updated at the next input.
-  filtersNeedRecalculating = 1;
+  filters.recalculate = 1;
   
-@sample
+@sample // ---------------------------------------------------------------------
   
   // Before any processing starts, check if new oversampling relevant
   // parameters were changed and "import" them to their targets if so.
@@ -486,61 +670,74 @@ out_pin:right output
   // Only runs if filter coeffs or (over-) sampling rate have changed.
   updateFilters();
   
-  // CPU CYCLE SAVER
+  // CHANNEL PROCESSING EVALUATION ---------------------------------------------
   //
   // Will evaluate which channels should be processed based on routing
   // selection, stops quiet and idling channels from processing. This
   // makes the plugin a lot lighter on CPU if not all channels need to
-  // play at all times.
+  // calculate at all times.
+  //
   procL = (channels == 0 || channels == 1);
   procR = (channels == 0 || channels == 2);
-  
-  // If the channel shouldn't be processed, mute its input right away.
+  //
+  // If a channel shouldn't be processed, mute its input right away.
   spl0 *= procL;
   spl1 *= procR;
   
+  // SILENCE COUNTER -----------------------------------------------------------
+  //
   // If the input samples are zero, increase their silence counters, but
   // limit the increase to only happen for 1s. After that, the value will
   // stay at the "shut this track down" limit +1. As soon as this channel
   // contains a sample that is anything else but zero, the counter resets
   // to nil and waits to start over again, the channel will be processed.
+  // 
   silenceCounterL = (spl0 != 0) ? 0 : (silenceCounterL + (silenceCounterL < srate));
   silenceCounterR = (spl1 != 0) ? 0 : (silenceCounterR + (silenceCounterR < srate));
-  
+  //
   // If a channel is silent for longer than a second, disable processing
   silenceCounterL == srate ? procL = 0;
   silenceCounterR == srate ? procR = 0;
   
-  // PROCESSING -- LEFT CHANNEL -- MONO #1
+  // PROCESSING -- LEFT CHANNEL -- MONO #1 -------------------------------------
   //
   // If routing set to stereo or mono/left
-  (procL && (channels == 0 || channels == 1)) ?
+  //
+  procL ?
   (
-    // INPUT GATE
+    // INPUT GATE --------------------------------------------------------------
     // 
-    // If the gate is set to work on the input side, like a foot pedal.
+    // If the gate is set to work on the input side, like a foot pedal,
+    // or if the detector from here will be used for the post-amp gate.
+    //
     // This section is not oversampled, it runs at project sample rate.
-    (gatePos == 0) ?
+    //
+    (dynamics.gate.active && (dynamics.gate.position.pre || dynamics.gate.position.trig)) ?
     (
-      // Only process the gate, if the slider is above minimum value.
-      (inGate > -96) ?
-      (
-        // Run the envelope followers for this channel's gate
-        dynamics.gate.revL.envFollow(dynamics.gate.envL.envFollow(spl0) < dynamics.gate.threshold ? 0.0 : 1.0);
-        
-        // Apply the envelope/gain reduction to the signal
-        spl0 *= dynamics.gate.revL.envelope;
-      );
+      // Run the envelope followers for this channel's gate
+      dynamics.gate.revL.envFollow(dynamics.gate.envL.envFollow(spl0) < dynamics.gate.threshold ? 0.0 : 1.0);
+      
+      // Apply the envelope/gain reduction to the signal ONLY if the
+      // gate is operating in "pre" mode i.e. before the amp process.
+      spl0 *= (dynamics.gate.position.pre * dynamics.gate.revL.envelope) + (dynamics.gate.position.trig * 1);
     );
     
+    // ENVELOPE FOLLOWER -------------------------------------------------------
+    //
     // Run a rudimentary envelope follower over the input signal. This
     // envelope value will be used in the processing step further down
     // to scale certain effects in order to create a more dynamic and
     // responsive amp behaviour.
-    envL = amp.envL.envFollow(spl0);
+    //
+    // This section is not oversampled, it runs at project sample rate.
+    //
+    envL = decelerate(amp.envL.envFollow(spl0));
     
+    // UPSAMPLING STAGE --------------------------------------------------------
+    //
     // Do the following only if oversampling is wanted
-    (ovsX > 1) ?
+    //
+    (oversampling.ratio > 1) ?
     (
       // Oversampling is achieved by stuffing an array of samples with
       // zeroes, and then running a filter over them. By adding "dead"
@@ -549,85 +746,89 @@ out_pin:right output
       // counter this, it's enough to multiply the incoming sample by
       // the oversampling factor before filtering, this will keep the
       // signal level consistent.
-      spl0 = upFilterL.bwTick(spl0 * ovsX);
+      spl0 = upFilterL.bwTick(spl0 * oversampling.ratio);
       
       // After filtering the original input samples, it's time to also
       // filter all the "dead" zero-value samples that are now part of
       // the signal. This is necessary to keep filters' states in sync
       // with what is going on, but unfortunately adds to the CPU load
       // significantly. For every oversampling step, it's necessary to
-      // process one "dead" sample with the upsampling filter as well.
-      // Minus one round, that is, since the filter already ran on the
-      // input sample.
+      // process one additional dead sample through the filter as well.
       counter = 0;
-      while (counter < ovsX-1)
+      while (counter < oversampling.ratio-1)
       (
-        ups[counter] = upFilterL.bwTick(0);
+        oversampling.buffer[counter] = upFilterL.bwTick(0);
         counter += 1;
       );
     );
     
-    // Oversampling and (over-) sampling rate have been evaluated, but
-    // more importantly the input envelope is now available. This part
-    // uses the input envelope to scale the intensity of the Depth and
-    // Presence parameters.
-    amp.eq.depthL.eqBand   (110,   0.85, min(depth    * envL * 24, 4.5));
-    amp.eq.presenceL.eqBand(10000, 0.3,  min(presence * envL * 32, 12));
-    
-    // Run processing once on the actual input sample (post dynamics).
+    // GENERAL PROCESSING FUNCTION ---------------------------------------------
+    //
+    // Run processing function once on the actual input sample.
+    //
     spl0 = processLeft(spl0);
     
+    // DOWNSAMPLING STAGE ------------------------------------------------------
+    //
     // If oversampling is active, repeat the processing step from above
-    // a few times on "dead" zero-stuffed samples, then run filters and
-    // down-sample back to project sample rate again.
-    (ovsX > 1) ?
+    // a few times on dead zero-stuffed samples as well, one sample per
+    // oversampling step, then run them through the downsampling filter
+    // to keep it in sync with the oversampled sample rate, and finally
+    // downsample again by dropping the samples that we just calculated.
+    //
+    (oversampling.ratio > 1) ?
     (
       // Unfortunately, even though they'll be discarded without second
       // thought later on, it's necessary to process the "dead" samples
       // as well, just so the filters have signal to work on & can stay
       // in sync with the rest of the process. Omitting this step would
       // save CPU cycles, but it would not sound right. Sad.
+      //
       counter = 0;
-      while (counter < ovsX-1)
+      while (counter < oversampling.ratio-1)
       (
-        ups[counter] = processLeft(ups[counter]);
+        oversampling.buffer[counter] = processLeft(oversampling.buffer[counter]);
         counter += 1;
       );
-      
+      //
       // Filtering the actual signal samples that we really want to keep.
       // These downsampling filters should be really steep, so that they
       // cut away all the frequency content above 22 kHz that would fold
       // into the audible signal and cause aliasing.
+      //
       spl0 = dnFilterL.bwTick(spl0);
-      
+      //
       // And yet another loop to let the downsampling filters process
       // dead samples. Although these samples are practically irrelevant
-      // after this step, it's still necessary to run them through the
-      // filters so that they run at oversampled sample rate and so they
-      // are in the correct state for when the next real sample arrives.
+      // after this step, it's still necessary to run them through every
+      // filter, so that the filters run at oversampled rate and so they
+      // remain in the correct state for when the next sample arrives.
+      //
       counter = 0;
-      while (counter < ovsX-1)
+      while (counter < oversampling.ratio-1)
       (
-        ups[counter] = dnFilterL.bwTick(ups[counter]);
+        oversampling.buffer[counter] = dnFilterL.bwTick(oversampling.buffer[counter]);
         counter += 1;
       );
     );
     
-    // MAXIMIZER
+    // MAXIMIZER ---------------------------------------------------------------
     //
-    // Boosts the signal into a threshold then brings the loud signal
+    // Boosts the signal into a threshold, and brings the loud signal
     // down again, to make it appear louder. This heavily responds to
     // the earlier drive and filter stages, what exactly it does will
     // depend on what happens in the amp before it. Animate or squash,
     // it's your choice.
+    //
     // This section is not oversampled, it runs at project sample rate.
+    //
     (maximize < 0.0) ?
     (
       // Apply a gain boost to the input signal
       spl0 *= dynamics.maximizer.gain;
       
       // Run a follower and check if the envelope is above threshold
-      dynamics.maximizer.envL.envFollow(spl0) > dynamics.maximizer.threshold ? 
+      (dynamics.maximizer.envL.envFollow(spl0) > dynamics.maximizer.threshold) ? 
       (
         // If above threshold, run another envelope towards reduction level
         dynamics.maximizer.revL.envFollow(dynamics.maximizer.threshold);
@@ -640,87 +841,97 @@ out_pin:right output
       spl0 *= dynamics.maximizer.revL.envelope;
     );
     
-    // Simple un-oversampled hard clipper, just to make sure that there
-    // are no REALLY bad, insane volume jumps above 0 dBfs.
-    spl0 = hard(spl0);
-    
-    // From all the filtering and distortion, it's possible that a bit
-    // of DC offset was introduced to the signal. This will remove it,
-    // unfortunately it will also introduce pass-band ripples, meaning
-    // the previous hard clipping will not stay at true 0 dBfs ceiling.
+    // DC BLOCKER --------------------------------------------------------------
+    //
+    // From all the filtering and asymmetrical distortion, it's possible
+    // that a little bit of DC offset was introduced to the signal. This
+    // will remove any of that.
+    //
     spl0.dcBlock();
     
-    // OUTPUT GATE
+    // HARD CLIPPING -----------------------------------------------------------
+    //
+    // Simple un-oversampled hard clipping, just to make sure that
+    // there no REALLY bad, insane volume pops above 0 dBfs happen.
+    //
+    spl0 = hard(spl0);
+    
+    // OUTPUT GATE -------------------------------------------------------------
     // 
-    // If the gate is set to work on the output side, like a send effect.
+    // If the gate is set to work on the output side, like a send effect,
+    //
     // This section is not oversampled, it runs at project sample rate.
-    (gatePos == 1) ?
+    //
+    (dynamics.gate.active && dynamics.gate.position.post) ?
     (
-      // Only process the gate, if the slider is above minimum value.
-      (inGate > -96) ?
-      (
-        // Run the envelope followers for this channel's gate
-        dynamics.gate.revL.envFollow(dynamics.gate.envL.envFollow(spl0) < dynamics.gate.threshold ? 0.0 : 1.0);
-        
-        // Apply the envelope/gain reduction to the signal
-        spl0 *= dynamics.gate.revL.envelope;
-      );
+      // Run the envelope followers for this channel's gate
+      dynamics.gate.revL.envFollow(dynamics.gate.envL.envFollow(spl0) < dynamics.gate.threshold ? 0.0 : 1.0);
+      
+      // Apply the envelope/gain reduction to the signal
+      spl0 *= dynamics.gate.revL.envelope;
+    );
+    //
+    // If the gate is set to operate on the output, but is triggered
+    // from the detector circuit in the gate at the input stage.
+    //
+    (dynamics.gate.active && dynamics.gate.position.trig) ? 
+    (
+      // This envelope value was calculated at the input stage
+      spl0 *= dynamics.gate.revL.envelope;
     );
     
-    // Apply output gain to this channe's sample. Adding a conditional IF
+    // OUTPUT GAIN STAGE -------------------------------------------------------
+    //
+    // Apply output gain to this channel's sample. Adding a conditional IF
     // block here would be significantly slower than this multiplication.
+    //
     spl0 *= amp.output.gain;
   );
   
-  // PROCESSING -- RIGHT CHANNEL -- MONO #2
+  // PROCESSING -- RIGHT CHANNEL -- MONO #2 ------------------------------------
   //
   // Does the same as the above, but processes the right
   // input channel, if routing is stereo or mono/right.
-  (procR && (channels == 0 || channels == 2)) ?
+  //
+  procR ?
   (
-    (gatePos == 0) ?
+    (dynamics.gate.active && (dynamics.gate.position.pre || dynamics.gate.position.trig)) ?
     (
-      (inGate > -96) ?
-      (
-        dynamics.gate.revR.envFollow(dynamics.gate.envR.envFollow(spl1) < dynamics.gate.threshold ? 0.0 : 1.0);
-        spl1 *= dynamics.gate.revR.envelope;
-      );
+      dynamics.gate.revR.envFollow(dynamics.gate.envR.envFollow(spl1) < dynamics.gate.threshold ? 0.0 : 1.0);
+      spl1 *= (dynamics.gate.position.pre * dynamics.gate.revR.envelope) + (dynamics.gate.position.trig * 1);
     );
     
-    envR = amp.envR.envFollow(spl1);
+    envR = decelerate(amp.envR.envFollow(spl1));
     
-    (ovsX > 1) ?
+    (oversampling.ratio > 1) ?
     (
-      spl1 = upFilterR.bwTick(spl1 * ovsX);
+      spl1 = upFilterR.bwTick(spl1 * oversampling.ratio);
       
       counter = 0;
-      while (counter < ovsX-1)
+      while (counter < oversampling.ratio-1)
       (
-        ups[counter+ovsX] = upFilterR.bwTick(0);
+        oversampling.buffer[counter+oversampling.ratio] = upFilterR.bwTick(0);
         counter += 1;
       );
     );
     
-    amp.eq.depthR.eqBand   (110,   0.85, min(depth    * envR * 24, 4.5));
-    amp.eq.presenceR.eqBand(10000, 0.3,  min(presence * envR * 32, 12));
-    
     spl1 = processRight(spl1);
     
-    (ovsX > 1) ?
+    (oversampling.ratio > 1) ?
     (
       counter = 0;
-      while (counter < ovsX-1)
+      while (counter < oversampling.ratio-1)
       (
-        ups[counter+ovsX] = processRight(ups[counter+ovsX]);
+        oversampling.buffer[counter+oversampling.ratio] = processRight(oversampling.buffer[counter+oversampling.ratio]);
         counter += 1;
       );
       
       spl1 = dnFilterR.bwTick(spl1);
       
       counter = 0;
-      while (counter < ovsX-1)
+      while (counter < oversampling.ratio-1)
       (
-        ups[counter+ovsX] = dnFilterR.bwTick(ups[counter+ovsX]);
+        oversampling.buffer[counter+oversampling.ratio] = dnFilterR.bwTick(oversampling.buffer[counter+oversampling.ratio]);
         counter += 1;
       );
     );
@@ -729,35 +940,38 @@ out_pin:right output
     (
       spl1 *= dynamics.maximizer.gain;
       
-      dynamics.maximizer.envR.envFollow(spl1) > dynamics.maximizer.threshold ? 
-      (
-        dynamics.maximizer.revR.envFollow(dynamics.maximizer.threshold);
-      ):(
-        dynamics.maximizer.revR.envFollow(1);
-      );
+      (dynamics.maximizer.envR.envFollow(spl1) > dynamics.maximizer.threshold) ? 
+      (dynamics.maximizer.revR.envFollow(dynamics.maximizer.threshold);):
+      (dynamics.maximizer.revR.envFollow(1););
       
       spl1 *= dynamics.maximizer.revR.envelope;
     );
     
-    spl1 = hard(spl1);
-    
     spl1.dcBlock();
     
-    (gatePos == 1) ?
+    spl1 = hard(spl1);
+    
+    (dynamics.gate.active && dynamics.gate.position.post) ?
     (
-      (inGate > -96) ?
-      (
-        dynamics.gate.revR.envFollow(dynamics.gate.envR.envFollow(spl1) < dynamics.gate.threshold ? 0.0 : 1.0);
-        spl1 *= dynamics.gate.revR.envelope;
-      );
+      dynamics.gate.revR.envFollow(dynamics.gate.envR.envFollow(spl1) < dynamics.gate.threshold ? 0.0 : 1.0);
+      spl1 *= dynamics.gate.revR.envelope;
+    );
+
+    (dynamics.gate.active && dynamics.gate.position.trig) ? 
+    (
+      spl1 *= dynamics.gate.revR.envelope;
     );
     
     spl1 *= amp.output.gain;
   );
   
-  
-  // If the output routing requires it, copy a processed mono signal
-  // over to the other un-calculated channel.
+  // MONO CHANNEL DUPLICATION --------------------------------------------------
+  //
+  // If the output routing requires it, copy one processed mono signal
+  // over to the other uncalculated channel. Saves considerable cycles
+  // of CPU versus calculating two entire channels separately, if both
+  // channels contain identical signals.
+  //
   channels == 1 ? spl1 = spl0;
   channels == 2 ? spl0 = spl1;
   
