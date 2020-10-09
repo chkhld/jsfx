@@ -1,0 +1,510 @@
+// Mic Combiner
+//
+// This is a utility to facilitate the process of merging two mono microphone
+// signals into one. It processes each microphone signal individually, allows
+// to set a balance/mix between both microphones, and sums them to mono.
+//
+// For example, if you've recorded a guitar/bass cabinet with two mics, you'd
+// send one of the mics into the left input, and the other one into the right
+// input channel. You can then invert the polarity ("flip the phase") of each
+// microphone, adjust their individual levels, and add individual filtering.
+//
+// The Position sliders are used to delay the signals against each other, and
+// even adjust their timing in relation to the rest of the project. You would
+// do this to bring their phases into sync. When positioning microphones, you
+// are usually measuring distances, plus distances are easier to measure than
+// timings, so it makes more sense to use millimeters as the unit rather than
+// milliseconds or even samples. Unfortunately, the value range makes the two
+// sliders very coarse, so it's recommended to adjust them with Cmd/Ctrl held.
+// 
+// The Position parameter uses magic to go back in time. Ah well, it exploits
+// the Plugin Delay Compensation. If at least one Position slider is negative,
+// Reaper will send samples to the plugin earlier than on other tracks, which
+// would usually be intended to make up for tiny delays introduced by certain 
+// algorithms. Sending samples to such a "slow" plugin ahead of time makes it
+// output its signal at the correct time, in sync with other tracks. But very
+// sneakily, this plugin doesn't really take the time it told Reaper it would,
+// which makes it possible for samples to come out of the plugin earlier than
+// they should. You can use this e.g. to make up delays introduced by setting
+// up microphones too far from the recorded source. Forward to the past! :)
+// 
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility microphone mic mixer gain volume filter
+//
+desc: Mic Combiner
+
+slider1:muteA=1<0,1,{Muted,Active}>Mic A
+slider2:muteB=1<0,1,{Muted,Active}>Mic B
+slider3
+slider4:polarityA=0<0,1,{Regular,Invert}>Polarity A
+slider5:polarityB=0<0,1,{Regular,Invert}>Polarity B
+slider6
+slider7:milmA=0<-1000,1000,1.0>Position A [mm]
+slider8:milmB=0<-1000,1000,1.0>Position B [mm]
+slider9
+slider10:dBGainA=0<-48,48,0.0001>Gain A [dB]
+slider11:dBGainB=0<-48,48,0.0001>Gain B [dB]
+slider12
+slider13:tiltA=0<-1,1,0.0001>Frequency Tilt A
+slider14:tiltB=0<-1,1,0.0001>Frequency Tilt B
+slider15
+slider16:hzHighA=20<20,500,1>High Pass A [Hz]
+slider17:hzHighB=20<20,500,1>High Pass B [Hz]
+slider18
+slider19:hzLowA=22000<2000,22000,1>Low Pass A [Hz]
+slider20:hzLowB=22000<2000,22000,1>Low Pass B [Hz]
+slider21
+slider22:balance=0<-100,100,0.0001>Balance [A < A+B > B]
+slider23
+slider24:dBTrim=0<-24,24,0.0001>Output Trim [dB]
+slider25
+slider26:panLR=0<-100,100,0.1>Pan [L < M > R]
+
+in_pin:Input A
+in_pin:Input B
+out_pin:Output A+B
+out_pin:Output A+B
+
+@init // -----------------------------------------------------------------------
+  
+  // Converts dB values to float gain factors. Divisions
+  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  
+  // Accelerated 1/x calculation
+  function fastReciprocal (value) (sqr(invsqrt(value)));
+  
+  // VARIOUS INTERPOLATION METHODS ---------------------------------------------
+  // 
+  // Implemented after Paul Bourke and Lewis Van Winkle
+  // http://paulbourke.net/miscellaneous/interpolation/
+  // https://codeplea.com/simple-interpolation
+  //
+  // Basic linear interpolation, constant speed
+  function linearInterpolation (value1, value2, position)
+  (
+    (value1 * (1.0 - position) + value2 * position);
+  );
+  //
+  // Implemented after Wikipedia
+  // https://en.wikipedia.org/wiki/Smoothstep
+  // 
+  // Slow start, slow stop (similar to cosine)
+  function smoothStep (value)
+  (
+    (value * value * (3 - (2 * value)));
+  );
+  
+  // RING BUFFER ---------------------------------------------------------------
+  //
+  // Turns a variable into a ring buffer that can self-manage its memory
+  function setupRingBuffer (memoryAddress, bufferLength) instance (length, last, next, readPosition, writePosition)
+  (
+    // If this buffer is not presently at the memory address it should be at, or
+    // if the specified buffer length does not match the current size
+    (this != memoryAddress) || (bufferLength != length) ?
+    (
+      // Make sure the buffer is at the correct memory address
+      this = memoryAddress;
+      
+      // Update the number of buffered samples
+      length = bufferLength;
+      
+      // The index of the last sample in this buffer
+      last = length - 1;
+      
+      // The first memory address that is NOT inside this buffer anymore.
+      // Comes in handy when allocating multiple consecutive buffers.
+      next = memoryAddress + length;
+      
+      // Reset the content of this buffer to all zeroes, this
+      // avoids reading nonsense from previously used memory.
+      memset(this, 0.0, length);
+      
+      // Set these indices with a -1 offset, so they're incremented to the
+      // actually correct positions (0 and last sample) in the next cycle.
+      readPosition = -1;
+      writePosition = max(-1, length - 2);
+    );
+  );
+  //
+  // Returns one stored value from the next read position of a ring buffer, and 
+  // stores one new value into the ring buffer at its next write position.
+  function tickRingBuffer (value) instance (length, last, readPosition, writePosition) local (read)
+  (
+    // Use input value as default output value
+    read = value;
+    
+    // Only do shuffle buffer parameters if it has content
+    (length > 0) ?
+    (
+      // Increment read and write positions
+      readPosition  += 1;
+      writePosition += 1;
+      
+      // Wrap the position values to range [0,last]
+      readPosition  %= length;
+      writePosition %= length;
+      
+      // Extract the stored value from the read position now. Read position 
+      // could be equal to write position, so extract the stored value before 
+      // writing any new values to the buffer.
+      read = this[readPosition];
+      
+      // Store new value in the ring buffer at write position
+      this[writePosition] = value;
+    );
+    
+    // Return output value
+    read;
+  );
+  
+  // DC BLOCKING FILTER --------------------------------------------------------
+  //
+  // Implemented after Julius O. Smith III
+  // https://ccrma.stanford.edu/~jos/filters/DC_Blocker_Software_Implementations.html
+  //
+  function dcBlock (sample) instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += sample - stateIn;
+    stateIn   = sample;
+    stateOut;
+  );
+  
+  // BUTTERWORTH FILTERS WITH VARIABLE ORDER -----------------------------------
+  //
+  // Implemented after Exstrom Laboratories LLC
+  // http://www.exstrom.com/journal/sigproc/
+  //
+  // Filter bank buffer management
+  bwFilterBank = 1000;
+  bwFilterSize = 20;
+  //
+  // Per-sample processing function
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  //
+  // Low pass filter
+  function bwLP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step] = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  //
+  // High pass filter
+  function bwHP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = -2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step]  = rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  
+  // EQ FILTER CLASSES ---------------------------------------------------------
+  //
+  // Implemented after Andrew Simper's State Variable Filter paper:
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+  //
+  // Per-sample processing function
+  function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
+  (
+    v3 = sample - ic2eq;
+    v1 = this.a1 * ic1eq + this.a2 * v3;
+    v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
+    ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
+    (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
+  );
+  //
+  // Low shelf filter
+  function eqLS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = k * (A - 1.0); m2 = sqr(A) - 1.0;
+  );
+  //
+  // High shelf filter
+  function eqHS (SR, Hz, Q, dB) instance (a1, a2, a3, m0, m1, m2) local (A, g, k)
+  (
+    A = pow(10.0, dB * 0.025); g = tan($PI * (Hz / SR)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = sqr(A); m1 = k * (1.0 - A) * A; m2 = 1.0 - m0;
+  );
+  
+  // PLUGIN DELAY COMPENSATION -------------------------------------------------
+  //
+  // Initialize PDC delay to zero samples
+  pdcValue = 0;
+  //
+  // Sets a new PDC value in samples
+  function setPDC (pdcSamples)
+  (
+    pdc_bot_ch = 0; // First channel to compensate
+    pdc_top_ch = 2; // First channel NOT to compensate anymore
+    
+    // Update PDC value only if current PDC value doesn't match new PDC value
+    (pdc_delay != pdcSamples) ? pdc_delay = pdcSamples;
+  );
+  
+  // DISTANCE TO TIME CONVERSION -----------------------------------------------
+  // 
+  // Conversion uses optimal conditions as mentioned in Wikipedia article:
+  // https://en.wikipedia.org/wiki/Speed_of_sound
+  //
+  // Takes a distance in millimeters and returns a delay in milliseconds
+  function mm2ms (millimeters)
+  (
+    millimeters * 0.002915451895;
+  );
+  
+  // TIME TO SAMPLES CONVERSION ------------------------------------------------
+  // 
+  // Converts milliseconds to the related amount of samples
+  function msToSamples (milliseconds)
+  (
+    ceil(milliseconds * srate * 0.001); // rounds to +1 to avoid 0-value results
+  );
+  
+  // VALUE INITIALIZATION SECTION ----------------------------------------------
+  //
+  // First memory address of delay sample buffer
+  delayBuffer = 2000;
+  //
+  // Tilt EQ frequency range
+  tiltFreqMin = 200;
+  tiltFreqMax = 2000;
+  //
+  // Tilt EQ quality/width
+  tiltWidth = 0.5;
+  //
+  // Tilt EQ gain range
+  tiltGainMin = -6.0;
+  tiltGainMax =  6.0;
+
+@slider // ---------------------------------------------------------------------
+  
+  // CPU saver, used to skip processing if both channels muted
+  process = (muteA || muteB);
+  
+  // Polarity inversion
+  flipA = 1 - (polarityA * 2);
+  flipB = 1 - (polarityB * 2);
+  
+  // Signal positioning by delay and PDC adjustments
+  //
+  delay = (abs(milmA) || abs(milmB)); // Is either of the position values non default
+  near  = min(milmA, milmB);  // Nearest  position adjustment in mm
+  far   = max(milmA, milmB);  // Furthest position adjustment in mm
+  dist  = far - near;         // Distance between microphones A and B in mm
+  //
+  // If at least one distance isn't zero, i.e. 1+ positions adjusted
+  delay ? 
+  (
+    // If nearest position < 0 i.e. earlier in time
+    (near < 0) ? 
+    (
+      // Set PDC to required number of samples
+      pdcValue = msToSamples(mm2ms(abs(near)));
+      
+      // Delay for earlier signal in samples
+      delay1 = 0;
+    )
+    : // If nearest position > 0 i.e. later in time
+    (
+      // Set PDC to zero samples i.e. no delay
+      pdcValue = 0;
+      
+      // Delay for earlier signal in samples
+      delay1 = msToSamples(mm2ms(abs(near)));
+    );
+    
+    // Delay for later signal in samples
+    delay2 = msToSamples(mm2ms(abs(near) + dist));
+    
+    // If signal A is the earlier one
+    (milmA < milmB) ? 
+    (
+      delayA = delay1;
+      delayB = delay2;
+    );
+    
+    // If signal B is the earlier one
+    (milmB < milmA) ?
+    (
+      delayA = delay2;
+      delayB = delay1;
+    );
+  )
+  : // If both distances are zero, i.e. no position adjustment required 
+  (
+    // Set PDC to zero samples i.e. no delay
+    pdcValue = 0;
+    
+    // Set both signal delays to 0 samples
+    delayA = 0;
+    delayB = 0;
+  );
+  
+  // Set up ring buffers for both channels
+  ringA.setupRingBuffer(delayBuffer, delayA);
+  ringB.setupRingBuffer(ringA.next,  delayB);
+  
+  // Input and output gain adjustments
+  gainA = dBToGain(dBGainA);
+  gainB = dBToGain(dBGainB);
+  trim  = dBToGain(dBTrim);
+  
+  // Tilt EQ slider positioning
+  tiltValueA = (tiltA + 1.0) * 0.5; // Scale [-1,+1] range to normalized [0,1]
+  tiltValueB = (tiltB + 1.0) * 0.5; // Scale [-1,+1] range to normalized [0,1]
+  
+  // Tilt EQ frequency
+  tiltFreqA  = linearInterpolation(tiltFreqMax, tiltFreqMin, tiltValueA);
+  tiltFreqB  = linearInterpolation(tiltFreqMax, tiltFreqMin, tiltValueB);
+  
+  // Tilt EQ channel A filter gain
+  tiltLoShfA = linearInterpolation(tiltGainMax, tiltGainMin, tiltValueA);
+  tiltHiShfA = linearInterpolation(tiltGainMin, tiltGainMax, tiltValueA);
+  
+  // Tilt EQ channel B filter gain
+  tiltLoShfB = linearInterpolation(tiltGainMax, tiltGainMin, tiltValueB);
+  tiltHiShfB = linearInterpolation(tiltGainMin, tiltGainMax, tiltValueB);
+  
+  // Set up tilt EQ channel A/B low/high shelf filters
+  tiltLSA.eqLS(srate, tiltFreqA, tiltWidth, tiltLoShfA);
+  tiltLSB.eqLS(srate, tiltFreqB, tiltWidth, tiltLoShfB);
+  tiltHSA.eqHS(srate, tiltFreqA, tiltWidth, tiltHiShfA);
+  tiltHSB.eqHS(srate, tiltFreqB, tiltWidth, tiltHiShfB);
+  
+  // Set up channel A/B high/low pass filters
+  hpA.bwHP(srate, hzHighA, 2, bwFilterBank + bwFilterSize*0);
+  hpB.bwHP(srate, hzHighB, 2, bwFilterBank + bwFilterSize*1);
+  lpA.bwLP(srate, hzLowA,  2, bwFilterBank + bwFilterSize*2);
+  lpB.bwLP(srate, hzLowB,  2, bwFilterBank + bwFilterSize*3);
+  
+  // State flags, used to only process filters if not on default values
+  eqActiveA = tiltA != 0;
+  eqActiveB = tiltB != 0;
+  hpActiveA = hzHighA >    22;
+  hpActiveB = hzHighB >    22;
+  lpActiveA = hzLowA  < 22000;
+  lpActiveB = hzLowB  < 22000;
+  
+  // A+B signal mix balance
+  //
+  // -100 = 100% A +   0% B
+  //    0 = 100% A + 100% B
+  // +100 =   0% A + 100% B
+  //
+  mix   = balance * 0.01; // Range [-1,+1]
+  mixA  = smoothStep(1.0 - (mix > 0) * mix); // Range [0,1]
+  mixB  = smoothStep(1.0 - (mix < 0) * abs(mix)); // Range [0,1]
+  //
+  // Compensation factor to counter volume loss towards +/- 100 extremes
+  mixC  = fastReciprocal(mixA + mixB);
+  
+  // CPU saver, statically pre-calculate all signal gain adjustments (pre mono)
+  adjustA = muteA * flipA * gainA * mixA * mixC;
+  adjustB = muteB * flipB * gainB * mixB * mixC;
+  
+  // Output L-R Panning with -6 dBfs @ center (custom constant power law)
+  panPosition     = (panLR + 100) * 0.005;
+  panCompensation = dBToGain(6.0);
+  panPolarity     = sign(panLR);
+  absPosition     = abs(panLR * 0.04);
+  //
+  panCurve = sqrt(0.25 * pow(absPosition, 3.0)) * 0.125;
+  posCurve = 0.5 + panCurve;
+  negCurve = 0.5 - panCurve;
+  //
+  panGainL = (panPolarity == -1) ? posCurve : ((panPolarity == 1) ? negCurve : 0.5);
+  panGainR = (panPolarity == -1) ? negCurve : ((panPolarity == 1) ? posCurve : 0.5);
+  panGainL *= panCompensation;
+  panGainR *= panCompensation;
+  
+@sample // ---------------------------------------------------------------------
+  
+  // Update PDC value (only actually happens if value changes)
+  setPDC(pdcValue);
+  
+  // If at least one input channel is active/not muted
+  process ?
+  (
+    // Push samples into ring buffers and fetch next set of output samples
+    sampleA = ringA.tickRingBuffer(spl0);
+    sampleB = ringB.tickRingBuffer(spl1);
+    
+    // Apply input mute, polarity, gain, balance
+    sampleA *= adjustA;
+    sampleB *= adjustB;
+    
+    // If signal A level not adjusted to silence
+    adjustA ?
+    (
+      // If signal A tilt EQ active
+      eqActiveA ? 
+      (
+        sampleA = tiltLSA.eqTick(sampleA);
+        sampleA = tiltHSA.eqTick(sampleA);
+      );
+      
+      // If signal A filters active
+      hpActiveA ? sampleA = hpA.bwTick(sampleA);
+      lpActiveA ? sampleA = lpA.bwTick(sampleA);
+    );
+    
+    // If signal B level not adjusted to silence
+    adjustB ? 
+    (
+      // If signal B tilt EQ active
+      eqActiveB ? 
+      (
+        sampleB = tiltLSB.eqTick(sampleB);
+        sampleB = tiltHSB.eqTick(sampleB);
+      );
+      
+      // If signal B filters active
+      hpActiveB ? sampleB = hpB.bwTick(sampleB);
+      lpActiveB ? sampleB = lpB.bwTick(sampleB);
+    );
+    
+    // Mono summing
+    sampleA += sampleB;
+    
+    // DC blocker
+    sampleA = dcBlocker.dcBlock(sampleA);
+    
+    // Output trim
+    sampleA *= trim;
+    
+    // Duplicate and output signal
+    spl0 = spl1 = sampleA;
+    
+    // Output L-R panning
+    spl0 *= panGainL;
+    spl1 *= panGainR;
+  )
+  : // If both input channels are muted
+  (
+    // Don't bypass, but actively output silence
+    spl0 = spl1 = 0;
+  );
