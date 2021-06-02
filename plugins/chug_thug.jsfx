@@ -1,0 +1,425 @@
+// Chug Thug
+//
+// Simple split-band processor to tame distorted guitars' low end when chugging.
+//
+// Electric guitars like to build up a lot of (unnecessary) low frequency energy
+// when playing palm mutes, especially if larger amounts of drive and distortion
+// are involved. If you EQ the low frequencies out, guitars will sound thin when
+// played normally. If you don't EQ the low frequencies out, the guitars develop
+// an unflattering low-end boost when playing palm mutes, which subdues the rest
+// of the mix and probably wreaks havoc in any compressor or limiter further up.
+//
+// An age-old trick, I believe it was introduced to the community by Andy Sneap,
+// is to take a multi-band compressor, bypass all the upper bands, and then just
+// use the lowest band to tame the low frequencies whenever they become too bad.
+//
+// This is all good and well, but I don't feel like always loading up a hog of a
+// multi-band processor, only to not-use most of it. There must be simpler tools
+// for such a simple task. But since I didn't find any that were both simple and
+// streamlined enough for my expectations, I decided to roll my own.
+// 
+// It's as simple as it can be: use the Crossover slider to set a filter cutoff,
+// everything above that cutoff will be left alone, everything below it will be
+// processed. Then turn the Amount slider up or down, and see what happens.
+//
+// The higher the Amount is set, the harder the low end will be driven into the
+// compression, this should make it a lot more stable - but probably also quiet.
+// As the Amount slider doesn't affect compressor characteristics like ratio or
+// threshold, try using the Input slider to boost the incoming signal or to pad
+// it a bit, this can change the entire way the processing responds. Generally,
+// the idea is to not have the plugin do anything for most of the time, and let
+// it work only when the low end is about to race through the top from chugs.
+//
+// Use the Balance slider to, well, balance the low and high bands against each
+// other. At 0.5, both bands stay at the normal level. Below 0.5, the high band
+// is continuously rolled off. Similarly above 0.5, the low band will be rolled
+// off. This can make the signal relatively quiet, so use the Output slider for
+// level compensation.
+// 
+// Can't really make it much more straight-forward than that.
+//
+// The Routing is relatively easily explained: the first two Mono modes pick an
+// input channel and process only that channel's audio, which is distributed to
+// both plugin outputs at the end. Dual Mono mode will do the same as above but
+// it will process each input channel's signal independently. The stereo linked
+// mode also processes both input channels, but the strongest gain reduction of
+// both channels will be applied to both.
+//
+// For use on a single guitar signal, you'd go with one of the Mono modes.
+// Dual Mono is best for a bus, where each signal is individual and hard panned.
+// Stereo linked mode is probably best used for a single guitar signal that has
+// stereo effects like reverb on it, so that its stereo field doesn't collapse.
+//
+// (If it wasn't clear already: this plugin is not intended to be used on clean
+//  DI signals, but rather on already (re-/sim-) amped guitar recordings.)
+// 
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   guitar multiband compressor
+//
+desc: Chug Thug
+
+slider1:routing=2<0,3,{Mono (L),Mono (R),Dual Mono (L/R),Stereo linked}>Routing
+slider2
+slider3:dBGain=0<-24,24,0.01>Input [dB]
+slider4
+slider5:hzBand=250<80,800,1.0>Crossover [Hz]
+slider6:amount=50<0,100,0.1>Amount [%]
+slider7
+slider8:balance=0.5<0,1,0.01>Balance [Low/High]
+slider9
+slider10:dBTrim=0<-24,24,0.01>Output [dB]
+
+// Set up input and output connectors
+in_pin:Input L
+in_pin:Input R
+out_pin:Output L
+out_pin:Output R
+
+@init
+  
+  // Conversion between Decibels and float gain factors
+  //
+  // Converts dB values to float gain factors. Divisions
+  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Constants required for gainTodB
+  M_LN10_20   = 8.68588963806503655302257837833210164588794011607333;
+  FLOAT_FLOOR = 0.0000000630957; // gainTodB --> ~ -144 dBfs
+  //
+  // Converts float gain factors to dB values
+  function gainTodB (float) (log(max(FLOAT_FLOOR, abs(float))) * M_LN10_20);
+  
+  // BUTTERWORTH FILTER WITH VARIABLE ORDER ------------------------------------
+  //
+  // Implemented after Exstrom Laboratories LLC
+  // http://www.exstrom.com/journal/sigproc/
+  //
+  // Filter bank memory management
+  // 
+  bwFilterBank = 1000; // Memory address of first filter instance
+  bwFilterSize = 25;   // Size of memory addresses per filter instance
+  //
+  // Per-sample processing function
+  //
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  //
+  // High pass filter
+  //
+  function bwHP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = -2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step]  = rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  
+  // PRIMITIVE ENVELOPE FOLLOWER
+  //
+  // Follows the envelope of a signal at the speed set with the
+  // msTime argument. Higher ms values mean slower response to
+  // the signal, lower ms values mean faster response.
+  //
+  function envSetup (msTime) instance (coeff) local ()
+  (
+    coeff = exp(-1000 / (msTime * srate));
+  );
+  //
+  // It's possible to do the calculations in dB or in gain factors.
+  // Because this compressor uses so many different dB values, like
+  // Range and Knee, I decided to not constantly convert the values
+  // back and forth, but to just run the envelopes on dB values.
+  //
+  // The sample should already be abs()-ed by here to dBfs.
+  //
+  // The envelope is NOT kept in this variable, but in the PARENT
+  // variable containing this one. This is the case so one variable
+  // could hold one envelope value, but two follower instances with
+  // different timings which could both work on the same envelope.
+  //
+  function envTick (dBsample) instance (coeff) local (active)
+  (
+    active = (coeff != 0);
+    (!active * dBsample) + (active * (dBsample + coeff * (this..envelope - dBsample)));
+  );
+  
+  // ATTACK / RELEASE ENVELOPE -------------------------------------------------
+  //
+  // This will turn a variable into a full envelope container that
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release timings.
+  //
+  function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
+  (
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 / (msAttack  * srate));
+    coeffRel = exp(-1000 / (msRelease * srate));
+  );
+  //
+  // This calculates the new envelope state for the current sample.
+  // If the current input is above the current envelope state, let
+  // the attack envelope run. If the current input sample is below
+  // the current envelope state, then let the release envelope run.
+  // 
+  // The value should already be abs()-ed by here to positive dBfs.
+  //
+  function attRelTick (dBsample) instance (envelope, coeffAtt, coeffRel) local (above, change)
+  (
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
+    
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
+  );
+  
+  // GAIN CALCULATOR
+  //
+  // From all the various levels, this will calculate more
+  // values required to calculate with later on. Included
+  // are hard/soft knee limits and ratios, as well as the
+  // makeup gain amount.
+  //
+  // The formula to calculate the gain compensation value was
+  // implemented after Tom Duffy at Tascam and Charles Hoffman
+  // at Black Ghost Audio.
+  // https://music.columbia.edu/pipermail/music-dsp/2009-September/068027.html
+  // https://www.blackghostaudio.com/blog/the-ultimate-guide-to-compression
+  //
+  function gainCalcSetup (dBThreshold, fullRatio, dBKnee, dBRange) instance (threshold, ratio, makeup, knee, kneeWidth, kneeUpper, kneeLower, range) local ()
+  (
+    threshold = dBThreshold;            // signed dBfs
+    ratio = 1.0 / fullRatio;            // 1/x --> compression < 1, expansion > 1
+    makeup = dBToGain(abs((threshold + (abs(threshold) * ratio)) * 0.4)); // 0.5 went too loud too quickly
+    knee = dBKnee;
+    kneeWidth = knee * 0.5;
+    kneeUpper = threshold + kneeWidth;
+    kneeLower = threshold - kneeWidth;
+    range = dBRange;
+  );
+  //
+  function gainCalcTick (dBsample) instance (ratio, knee, kneeLower, kneeUpper, threshold, range) local (dBReduction, slope)
+  (
+    dBReduction = dBsample;
+    slope = 1.0 - ratio;
+    
+    // If the signal is inside the confies of the set Soft Knee,
+    // calculate the appropriate "soft" reduction here.
+    (knee > 0.0) && (dBsample > kneeLower) && (dBsample < kneeUpper) ?
+    (
+      slope *= ((dBsample - kneeLower) / knee) * 0.5;
+      dBReduction = slope * (kneeLower - dBsample);
+    ):(
+      dBReduction = min(0.0, slope * (threshold - dBsample));
+    );
+    
+    // Make sure the reduction is not higher than the specified
+    // range in Decibels. If set to -40 dB on the UI, the value
+    // of the range variable will be 0 here, so the calculated
+    // reduction amount will "win" and be used in full instead.
+    dBToGain(max(dBReduction, range));
+  );
+  
+  // RMS AVERAGER
+  //
+  // Turns a simple envelope follower into an RMS averager.
+  // This is like a brake for incoming samples, so instead of
+  // shooting every incoming sample directly into the envelope
+  // detector, this will average incoming values over a period
+  // of time, a so called "window". The length of the window is
+  // set in ms and defines over how much time the samples will
+  // be smoothed.
+  //
+  function rmsSetup (msWindow) instance (rmsEnv) local ()
+  (
+    rmsEnv.envSetup(msWindow);
+  );
+  //
+  function rmsTick (sample) instance (rmsEnv, envelope) local ()
+  (
+    envelope = rmsEnv.envTick(sample * sample);
+    sqrt(envelope);
+  );
+  
+  // COMPRESSOR
+  //
+  // Finally, now all the individual components created
+  // earlier are combined into a single big compressor.
+  //
+  // Full ratio: >1 for compression, <1 for expansion
+  // dBThreshold, dBRange: signed dBfs
+  // dBKnee: absolute/positive dB
+  // pctFeedback: % of previous GR detector feedback
+  //
+  function compSetup (msAttack, msRelease, msWindow, dBThreshold, fullRatio, dBKnee, dBRange, pctFeedback, autoMakeup) instance (attRel, rms, calc, feedback, autogain) local ()
+  (
+    attRel.attRelSetup(msAttack, msRelease);
+    rms.rmsSetup(msWindow);
+    calc.gainCalcSetup(dbThreshold, fullRatio, dBKnee, dBRange);
+    feedback = pctFeedback * 0.01;
+    autogain = autoMakeup;
+  );
+  //
+  function compTick (sample) instance (GR, feedback, rms, attRel, calc, autogain) local (feedbackFactor, keyGain, keyDecibels, gainAdjust)
+  (
+    // The amount of previous GR to apply to this key sample,
+    // this is essentially a 1-sample-delayed feedback.
+    feedbackFactor = 1.0 - ((1.0 - GR) * feedback);
+    
+    // The sidechain key sample value as a float gain factor.
+    // Doesn't need to be made absolute, this already happens
+    // outside after filtering, when the linking is prepared.
+    keyGain = sample * feedbackFactor;
+    
+    // If an RMS window is set up, run the key  sample through
+    // the RMS averager envelope first.
+    rms.rmsEnv.coeff > 0 ? keyGain = rms.rmsTick(keyGain);
+    
+    // Turn the key sample [-1;1] into a dBfs value
+    keyDecibels = gainTodB(keyGain);
+    
+    // Send the dBfs sample value into the attack/release
+    // envelope follower and get a new envelope state.
+    attRel.attRelTick(keyDecibels);
+    
+    // Calculate the required gain reduction for this input
+    // sample based on user-specified parameters. This will
+    // output the GR value as a float gain factor, NOT in dB.
+    GR = calc.gainCalcTick(attRel.envelope);
+    
+    // Factor in automatic gain compensation if set
+    gainAdjust = (autogain == 0) ? calc.makeup : 1.0;
+    
+    // This return value is the float factor gain adjustment
+    // that needs to be applied to the signal sample, it is
+    // NOT an actual sample value.
+    GR * gainAdjust;
+  );
+  
+  // Compressor settings
+  compAttack = 5.0;
+  compRelease = 250.0;
+  compWindow = 0.0;
+  compThresh = -6.0;
+  compRatio = 4.0;
+  compKnee = 4.5;
+  maxRange = -144.0;
+  compFeedbk = 0.0;
+  autoGain = 1.0;
+  
+@slider
+  
+  // Flags to indicate whether or not 2-channel mode is linked
+  dual   = (routing == 2);
+  linked = (routing == 3);
+  
+  // Turns UI slider dB values into float gain factors
+  gain  = dBToGain(dBGain);
+  trim  = dBToGain(dBTrim);
+  
+  // How heavy to drive the low band into the ceiling/threshold
+  dBDrive = amount * 0.24; // amount/100*24dB = amount*0.01*24
+  drive   = dBToGain(dBDrive);
+  pad     = dBToGain(-dBDrive);
+  
+  // Set up the filters
+  hpL.bwHP(srate, hzBand, 1, bwFilterBank+(0*bwFilterSize));
+  hpR.bwHP(srate, hzBand, 1, bwFilterBank+(1*bwFilterSize));
+  
+  // Prepare two compressor instances, one for each channel.
+  compL.compSetup(compAttack, compRelease, compWindow, compThresh, compRatio, compKnee, maxRange, compFeedbk, autoGain);
+  compR.compSetup(compAttack, compRelease, compWindow, compThresh, compRatio, compKnee, maxRange, compFeedbk, autoGain);
+  
+  // Turn the Balance slider into separate band gain adjustment factors
+  balHi = (balance >= 0.5) ? 1.0 : (balance * 2.0);
+  balLo = (balance <= 0.5) ? 1.0 : (1.0 - (balance * 2.0 - 1));
+  
+@sample
+  
+  // Single-channel routing
+  (routing < 2) ?
+  (
+    // Store the selected channel's sample as the input signal
+    signal = spl(routing);
+    
+    // Apply input gain
+    signal *= gain;
+    
+    // Split the signal up into low and high bands. The high
+    // band will not be processed at all.
+    hiL = hpL.bwTick(signal);
+    loL = signal - hiL;
+    
+    // Apply drive to press the low end up into the threshold,
+    // the strength of this depends on the Amount slider
+    loL *= drive;
+    
+    // Let the compressor calculate the gain reduction value 
+    // and apply it to the signal
+    loL *= compL.compTick(abs(loL));
+    
+    // Apply post-compressor gain pad, also depends on Amount
+    loL *= pad;
+    
+    // Apply balance gain adjustments to the bands, then sum
+    // the processed low band with the unprocessed high band.
+    signal = loL*balLo + hiL+balHi;
+    
+    // Apply output volume trim to the signal
+    signal *= trim;
+    
+    // Distribute the mono output signal to both plugin outputs
+    spl0 = signal;
+    spl1 = signal;
+  ):
+  // Two-channel routing
+  (routing > 1) ?
+  (
+    spl0 *= gain;
+    spl1 *= gain;
+    
+    hiL = hpL.bwTick(spl0);
+    hiR = hpR.bwTick(spl1);
+    
+    loL = spl0 - hiL;
+    loR = spl1 - hiR;
+    
+    loL *= drive;
+    loR *= drive;
+    
+    // Let both compressor envelopes run separately
+    grL = compL.compTick(abs(loL));
+    grR = compR.compTick(abs(loR));
+    
+    // Use the value with the most gain reduction for linked routing.
+    // This is a simple instruction, faster on CPU than conditionals.
+    // If routing is Dual Mono, this is 0 and won't affect the sound.
+    grX = linked * min(grL, grR);
+    
+    // Apply the evaluated gain reduction, dual or linked
+    loL *= dual*grL + grX;
+    loR *= dual*grR + grX;;
+    
+    loL *= pad;
+    loR *= pad;
+    
+    spl0 = loL*balLo + hiL*balHi;
+    spl1 = loR*balLo + hiR*balHi;
+    
+    spl0 *= trim;
+    spl1 *= trim;
+  );
+  
