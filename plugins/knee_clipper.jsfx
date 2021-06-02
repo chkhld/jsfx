@@ -1,0 +1,172 @@
+// Knee Clipper
+//
+// A clipper neither purely hard nor purely soft, and yet a unification of both.
+//
+// Hard clippers are usually lamented about as producing digital, cold and nasty
+// sound. But they are perfect for very short overs, as they will not affect the
+// signal in any way before overs actually happen, and only those occuring overs
+// will be clipped, nothing else. You can get away with lots of hard clipping on
+// percussive and transient-rich material like drums. For more consistent things
+// like a bass track or a full mix, hard clipping is not ideal as it tends to be
+// either completely transparent or descend into a wild aliasing mess instantly.
+//
+// Soft clippers are usually touted as tube-like distortion that produces a warm
+// and desirable saturation. In contrast to hard clippers, soft clippers tend to
+// be based on sigmoid functions which already affect the signal from the moment
+// it's no longer silence, so even at very low input volumes the distortion will
+// already set in and introduce harmonics. As signal levels increase, distortion
+// amounts will also increase significantly. Not only will this blanket a signal
+// with a soft and buzzy layer of harmonic fur, but it also smooths out any nice
+// transients, and shifts the weight of sub bass frequencies higher into the mid
+// range, this becomes more obvious as more overs are clipped and eliminates the
+// impact of a kick drum easily. But less percussive and more consistent signals
+// like voices or bass tracks may benefit if applied appropriately. This type of
+// clipping will usually result in output quieter than hard clipping, and to get
+// similar RMS levels it's necessary to apply more gain - which again means more
+// distortion of quieter signal parts, and yet more fluffy killer blanket buzz.
+// 
+// The process this clipper uses unites the benefits of both clipping types, but
+// only develops their disadvantageous characteristics at quite extreme settings.
+// This is achieved by using a so-called "knee" before the hard clipping stage.
+//
+// While the knee is set to 0 dB, this is just a standard hard clipper, like all
+// the other hard clippers out there. As soon as a knee value above 0 dB is set,
+// two thresholds will be set around the ceiling level, one below it, one above.
+// Each threshold is 1/2 the knee dB away from the ceiling, this creates a "soft
+// zone" around the ceiling with a start-to-end range of the set knee dB.
+// 
+// No clipping occurs before the signal crosses the lower threshold of the knee,
+// which makes this clipper transparent like a hard clipper at first.
+//
+// Any signal within the lower and upper knee threshold range is gently rescaled
+// to fit below the ceiling, even if the signal originally shot past the ceiling,
+// within the confines of the [ceiling,upper knee threshold] range. This imparts
+// a little bit of soft clipping saturation, and preverves the life in very loud
+// transients significantly better than other, simple clipping methods.
+// 
+// Any signal exceeding the upper threshold of the knee will just be chopped off
+// by a regular hard clipper.
+// 
+// The result of this is a very clean signal for the most part, with only little
+// "soft clipping buzz" and amazingly snappy transients. All without sacrificing
+// as much of the signal's clarity as with the other methods.
+//
+// The shape of loud and fast transients will be squeezed but preserved, and the
+// amount of distortion from actually cutting out overs is reduced to a minimum.
+// The transition from clean to distorted is incredibly smooth and forgiving.
+// 
+// The lower the knee dB value is set, the cleaner the signal will be as long as
+// no clipping occurs, but the increased hard clipping will sound harsh. Setting
+// a higher knee dB value starts saturating the signal earlier, but reduces hard
+// clipping harshness and makes loud signal parts sound less distorted.
+//
+// If you think clipping your mix any more would only make it worse, bypass your
+// clipper and give this one a try. ;)
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   processing gain amplitude clipper distortion saturation
+//
+desc: Knee Clipper
+
+slider1:dBGain=0<-12,12,0.01>Gain [dB]
+slider2:dBCeil=0<-24,0,0.01>Ceiling [dBfs]
+slider3:dBKnee=12<0,24,0.1>Knee [dB]
+slider4:dBTrim=0<-12,12,0.01>Trim [dB]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Constants required for gainTodB below
+  M_LN10_20   = 8.68588963806503655302257837833210164588794011607333;
+  FLOAT_FLOOR = 0.0000000630957; // ~ -144 dBfs
+  //
+  // Converts float gain factors to dB values
+  function gainTodB (float) (log(max(FLOAT_FLOOR, abs(float))) * M_LN10_20);
+  
+  // HARD CLIPPING -------------------------------------------------------------
+  //
+  // Most basic "if larger than ceiling, set to ceiling" clamping
+  //
+  function hardClip (sample) (max(-ceiling, min(ceiling, sample)));
+  
+  // The main processing function with gains, knee and clipping
+  function process (sample) local (dBKey, ratio, scale, reduction, gr)
+  (
+    // Apply pre-clip gain to input sample
+    sample *= gain;
+    
+    // Only process this bit if knee is > 0 dB
+    useKnee ?
+    (
+      // Turn the input sample into a signed dBfs value
+      dBKey = gainTodB(sample);
+      
+      // If the signal is inside the knee range
+      (dBKey > kneeLower) && (dBKey < kneeUpper) ?
+      (
+        // How far inside the knee is the key signal [0,1]
+        ratio = (dBKey - kneeLower) / dBKnee;
+        
+        // Turn the "inside the knee" ratio into a scaling factor
+        scale = ratio * (ratio * 0.25);
+        
+        // Calculate appropriate amount of dB gain reduction
+        reduction = scale * (kneeLower - dBKey);
+        
+        // Turn gain reduction dB value into a float factor
+        gr = dBToGain(reduction);
+        
+        // Apply the gain reduction to the sample
+        sample *= gr;
+      );
+    );
+    
+    // Apply hard clipping to the sample, no matter what happened before.
+    // Any sample inside the knee is now below the ceiling, and the ones
+    // still above the ceiling need to be hard clipped, so this is OK.
+    sample = hardClip(sample);
+    
+    // Return the sample with output volume trim applied
+    sample * trim;
+  );
+
+@slider  
+  
+  // Turn the Gain slider's dB value into a float gain factor
+  gain = dBToGain(dBGain);
+  
+  // Turn the Ceiling slider's dBfs value into a float gain factor
+  ceiling = dBToGain(dBCeil);
+  
+  // Turn the Trim slider's dB value into a float gain factor
+  trim = dBToGain(dBTrim);
+  
+  // Flag to only process clipping knee if a knee width is set
+  useKnee = (dBKnee > 0.0);
+  
+  // Determine how far above and below the ceiling the knee ranges
+  kneeWidth = dBKnee * 0.5;
+  kneeUpper = dBCeil + kneeWidth;
+  kneeLower = dBCeil - kneeWidth;
+  
+@sample
+  
+  // Set to 0 to start loop at first input channel
+  channel = 0;
+  
+  // Loop through all of this plugin's input channels
+  while (channel < num_ch)
+  (
+    // Apply processing to the current channel's sample
+    spl(channel) = process(spl(channel));
+    
+    // Increment counter to next channel
+    channel += 1;
+  );
+  
