@@ -243,9 +243,13 @@ slider9:dBTrim=0<-12,12,0.0001>Trim [dB]
     oscill == 4 ? (carrier = tickPulse(0, 0.25));
     oscill == 5 ? (carrier = tickPulse(0, 0.50));
     oscill == 6 ? (carrier = tickPulse(0, 0.75));
-    /* osc == 7 ? handled in while loop below */
     
-    carrier += biased * bias;
+    // If non-self carrier oscillator selected
+    oscill <  7 ?
+    (
+      // Apply bias to the carrier signal
+      carrier += biased * bias;
+    );
     
     // Start with first input channel
     channel = 0;
@@ -253,6 +257,9 @@ slider9:dBTrim=0<-12,12,0.0001>Trim [dB]
     // Cycle through all of the plugin's input channels
     while (channel < num_ch)
     (
+      // If carrier oscillator is "self", use input signal of this channel
+      oscill == 7 ? (carrier = spl(channel) + biased * bias);
+      
       // Make copy of input sample because spl() addressing is slow
       splDry = spl(channel);
       
