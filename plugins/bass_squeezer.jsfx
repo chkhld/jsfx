@@ -1,0 +1,389 @@
+// Bass Squeezer
+//
+// Split-band compression and filtered distortion for that instant bathtub bass.
+//
+// It's a relatively simple thing, really. You throw this on a bass track, DI or
+// amped, and observe what happens. Instantly pushes the lows up to blow out the
+// subwoofer, cuts out the annoying lower mids, and distorts the high end to let
+// it pierce through the rest of your mix.
+//
+// If one of the Mono input routings is selected, only one channel is processed,
+// which leads to less CPU munch than stereo mode, which processes two channels.
+//
+// The Split Low setting defines the frequency at which the filter separates the
+// low end from the rest. The Split High slider defines the cutoff frequency for
+// the filter that separates the high end from the rest. If both sliders are NOT
+// set to the same cutoff frequency, which will usually be the case, all content
+// between the two filter cutoffs will be rejected, essentially creating a notch
+// filter for the low mids of variable bandwidth, depending on the two cutoffs.
+//
+// Turning up the Squeeze Lows slider will compress the low end harder.
+//
+// Turning up the Squeeze Highs slider compresses and distorts the high band. It
+// will also lower a high-cut filter that narrows the high band down towards the
+// Split Low cutoff to focus and pronounce the distortion.
+//
+// The default setting should give you a good starting point. Try changing Split
+// High first, and see if lowering or raising it sits better around your bass-es
+// high end. If you want more high buzz, increase High Trim. If the distortion's
+// really scratchy and nasty, lower High Trim until it's acceptable. It's always
+// possible to compensate volume balance differences with the Low Trim/High Trim
+// sliders.
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   bass distortion compression multiband filter
+//
+desc: Bass Squeezer
+
+slider1:routing=0<0,3,{Mono (only L),Mono (only R),Mono (L+R),Stereo}>Input routing
+slider2
+slider3:dBGain=0<-24,24,0.01>Input Gain [dB]
+slider4
+slider5:hzSplitLo=150<100,500,1>Split Low [Hz]
+slider6:hzSplitHi=1000<500,2500,1>Split High [Hz]
+slider7
+slider8:procLo=50<0,100,1>Squeeze Lows [%]
+slider9:procHi=50<0,100,1>Squeeze Highs [%]
+slider10
+slider11:dBLo=0<-12,12,0.01>Low Trim [dB]
+slider12:dBHi=0<-12,12,0.01>High Trim [dB]
+slider13
+slider14:wetMix=100<0,100,1>Wet Blend [%]
+slider15
+slider16:dBTrim=0<-24,24,0.1>Output Trim [dB]
+
+in_pin:Input L
+in_pin:Input R
+out_pin:Output L
+out_pin:Output R
+
+@init
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Constants required for gainTodB
+  M_LN10_20   = 8.68588963806503655302257837833210164588794011607333;
+  FLOAT_FLOOR = 0.0000000630957; // gainTodB --> ~ -144 dBfs
+  //
+  // Converts float gain factors to dB values
+  function gainTodB (float) (log(max(FLOAT_FLOOR, abs(float))) * M_LN10_20);
+  
+  // Hyperbolic tangent approximation
+  // 
+  // Implemented after nVidia
+  // https://developer.download.nvidia.com/cg/tanh.html
+  //
+  function tanh (number) local (exp2x)
+  (
+    exp2x = exp(2.0 * number);
+    (exp2x - 1.0) / (exp2x + 1.0);
+  );
+  
+  // BUTTERWORTH FILTER WITH VARIABLE ORDER ------------------------------------
+  //
+  // Implemented after Exstrom Laboratories LLC
+  // http://www.exstrom.com/journal/sigproc/
+  //
+  // Filter bank memory management
+  // 
+  bwFilterBank = 0;    // Memory address of first filter instance
+  bwFilterSize = 100;  // Size of memory addresses per filter instance
+  //
+  // Per-sample processing function
+  //
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  //
+  // Low pass filter
+  //
+  function bwLP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step] = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  //
+  // High pass filter
+  //
+  function bwHP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = -2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step]  = rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  
+  // ATTACK / RELEASE ENVELOPE
+  //
+  // This will turn a variable into a full envelope container that
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release timings.
+  //
+  function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
+  (
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 / (msAttack  * srate));
+    coeffRel = exp(-1000 / (msRelease * srate));
+  );
+  //
+  // This calculates the new envelope state for the current sample.
+  // If the current sample is above the current envelope state, let
+  // the attack envelope run. And if the current sample is below the
+  // the current envelope state, then let the release envelope run.
+  // 
+  // The sample should already be abs()-ed by here to dBfs
+  //
+  function attRelTick (dBsample) instance (envelope, coeffAtt, coeffRel) local (above, change)
+  (
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
+    
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
+  );
+  
+  // GAIN CALCULATOR
+  //
+  // From all the various levels, this will calculate more
+  // values required to calculate with later on.
+  //
+  function gainCalcSetup (dBThreshold, fullRatio, dBKnee) instance (threshold, ratio, makeup, knee, kneeWidth, kneeUpper, kneeLower) local ()
+  (
+    threshold = dBThreshold;  // signed dBfs
+    ratio = 1 / fullRatio;    // 1/x --> compression < 1, expansion > 1
+    makeup = dBToGain(abs((threshold + (abs(threshold) * ratio)) * 0.4));
+    knee = dBKnee;
+    kneeWidth = knee * 0.5;
+    kneeUpper = threshold + kneeWidth;
+    kneeLower = threshold - kneeWidth;
+  );
+  //
+  function gainCalcTick (dBsample) instance (ratio, knee, kneeLower, kneeUpper, threshold) local (dBReduction, slope)
+  (
+    dBReduction = dBsample;
+    slope = 1.0 - ratio;
+    
+    // If the signal is inside the confines of the set Soft Knee,
+    // calculate the appropriate "soft" reduction here.
+    (knee > 0.0) && (dBsample > kneeLower) && (dBsample < kneeUpper) ?
+    (
+      slope *= ((dBsample - kneeLower) / knee) * 0.5;
+      dBReduction = slope * (kneeLower - dBsample);
+    ):(
+      dBReduction = min(0.0, slope * (threshold - dBsample));
+    );
+    
+    // Return the gain reduction float factor
+    dBToGain(dBReduction);
+  );
+  
+  // COMPRESSOR
+  //
+  // Finally, now all the individual components created
+  // earlier are combined into a single big compressor.
+  //
+  // Full ratio: >1 for compression, <1 for expansion
+  // dBThreshold: signed dBfs
+  // dBKnee: absolute/positive dB
+  //
+  function compSetup (msAttack, msRelease, dBThreshold, fullRatio, dBKnee) instance (attRel, calc) local ()
+  (
+    attRel.attRelSetup(msAttack, msRelease);
+    calc.gainCalcSetup(dbThreshold, fullRatio, dBKnee);
+  );
+  //
+  function compTick (sample) instance (GR, attRel, calc) local ()
+  (
+    // Turn the key sample [-1;1] into a dBfs value and send it 
+    // into the envelope follower.
+    attRel.attRelTick(gainTodB(sample));
+    
+    // Calculate the required gain reduction for this input
+    // sample based on user-specified parameters. This will
+    // output the GR value as a float gain factor, NOT in dB.
+    GR = calc.gainCalcTick(attRel.envelope);
+    
+    // This return value is the float factor gain adjustment
+    // that needs to be applied to the signal sample, it is
+    // NOT an actual sample value.
+    GR * calc.makeup;
+  );
+
+@slider
+  
+  // Full spectrum input gain adjustment
+  inputGain = dBToGain(dBGain);
+  
+  // Low and High band processing amounts (percent to [0,1])
+  loWet = procLo * 0.01;
+  loDry = 1.0 - loWet;
+  
+  hiWet = procHi * 0.01;
+  hiDry = 1.0 - hiWet;
+  
+  // Update filter properties
+  lpL.bwLP(srate, hzSplitLo, 4, bwFilterBank);
+  lpR.bwLP(srate, hzSplitLo, 4, bwFilterBank+bwFilterSize);
+  
+  hpL.bwHP(srate, hzSplitHi, 4, bwFilterBank+(2*bwFilterSize));
+  hpR.bwHP(srate, hzSplitHi, 4, bwFilterBank+(3*bwFilterSize));
+  
+  hzHighCutMin = hzSplitHi * 2;
+  hzHighCutFrq = hzHighCutMin + (hiDry * 10000);
+  
+  hcL.bwLP(srate, hzHighCutFrq, 4, bwFilterBank+(4*bwFilterSize));
+  hcR.bwLP(srate, hzHighCutFrq, 4, bwFilterBank+(5*bwFilterSize));
+  
+  // Set low band compressor characteristics
+  attackLo = 101 - procLo; // 0% = 101ms, 50% = 51ms, 100% = 1ms
+  releaseLo = 50 + (10 * procLo); // 0% = 50ms, 50% = 550ms, 100% = 1050ms
+  thresholdLo = 0 - (36 * loWet); // 0% = 0 dBfs, 50% = -18 dBfs, 100% = -36 dBfs
+  ratioLo = 1 + (7 * loWet); // 0% = 1:1, 50% = 1:4.5, 100% = 1:8
+  kneeLo = (18 * loWet); // 0% = 0 dB, 50% = 6 dB, 100% = 12 dB
+  
+  // Set up low band compressors
+  compLoL.compSetup(attackLo, releaseLo, thresholdLo, ratioLo, kneeLo);
+  compLoR.compSetup(attackLo, releaseLo, thresholdLo, ratioLo, kneeLo);
+  
+  // High band saturation drive and compensation
+  highDrive = dBToGain(hiWet * 48); // 0% = 0 dB, 50% = 12 dB, 100% = 24 dB
+  highComp  = dBToGain(hiWet * -24);
+  
+  // Set high band compressor characteristics
+  attackHi = 10 - (hiWet * 9); // 0% = 10ms, 50% = 6.5ms, 100% = 1ms
+  releaseHi = 1 + (hiWet * 9); // 0% = 1ms, 50% 5.5ms, 100% 10ms
+  thresholdHi = 0 - (12 * hiWet); // 0% = dBfs, 50% = -6 dBfs, 100% = -12 dBfs
+  ratioHi = 1 + (10 * hiWet); // 0% = 1:1, 50% = 1:6, 10% = 1:11
+  kneeHi = 18 - (12 * hiWet); // 0% = 18 dB, 50% = 12 dB, 100% = 6 dB
+  
+  // Set up high band compressors
+  compHiL.compSetup(attackHi, releaseHi, thresholdHi, ratioHi, kneeHi);
+  compHiR.compSetup(attackHi, releaseHi, thresholdHi, ratioHi, kneeHi);
+  
+  // Low and high band make-up gain adjustments
+  loTrim = dBToGain(dBLo);
+  hiTrim = dBToGain(dBHi);
+  
+  // Output gain trim
+  outTrim = dBToGain(dBTrim);
+  
+  // Dry/Wet signal mix
+  amountWet = wetMix * 0.01;
+  amountDry = 1.0 - amountWet;
+  
+@sample
+  
+  // Mono operation
+  (routing < 3) ?
+  (
+    // Pick the input signal depending on selected mono routing
+    (routing == 0) ? input = spl0; // Mono (L)
+    (routing == 1) ? input = spl1; // Mono (R)
+    (routing == 2) ? input = (spl0+spl1) * 0.5; // Mono (L+R)
+    
+    // Apply full-band input gain
+    signal = input * inputGain;
+    
+    // Split off low and high band signals
+    wetLo = lpL.bwTick(signal);
+    wetHi = hpL.bwTick(signal);
+    
+    // Process high band high-cut
+    wetHi = hcL.bwTick(wetHi);
+    
+    // If low band squeeze enabled
+    (loWet > 0.0) ? 
+    (
+      // Apply compression to low band
+      wetLo *= compLoL.compTick(abs(wetLo));
+      
+      // Add some gentle post-compression harmonics to low band
+      wetLo = (loDry * wetLo) + (loWet * tanh(wetLo));
+    );
+    
+    // If high band squeeze enabled
+    (hiWet > 0.0) ?
+    (
+      // Apply drive (and compensation) to high band
+      wetHi = (hiDry * wetHi) + (hiWet * tanh(wetHi * highDrive) * highComp);
+      
+      // Apply compression to high band
+      wetHi *= compHiL.compTick(abs(wetHi));
+    );
+    
+    // Apply post-processing make-up gain to low and high bands
+    wetLo *= loTrim;
+    wetHi *= hiTrim;
+    
+    // Merge low and high bands into original signal
+    signal = (amountDry * input) + (amountWet * (wetLo + wetHi));
+    
+    // Apply output trim to signal
+    signal *= outTrim;
+    
+    // Copy final signal to both plugin outputs
+    spl0 = spl1 = signal;
+  )
+  : // Stereo operation -- same as mono, just on separate channels
+  (
+    signalL = spl0 * inputGain;
+    signalR = spl1 * inputGain;
+    
+    wetLoL = lpL.bwTick(signalL);
+    wetLoR = lpR.bwTick(signalR);
+    
+    wetHiL = hpL.bwTick(signalL);
+    wetHiR = hpR.bwTick(signalR);
+    
+    wetHiL = hcL.bwTick(wetHiL);
+    wetHiR = hcR.bwTick(wetHiR);
+    
+    (loWet > 0.0) ? 
+    (
+      wetLoL *= compLoL.compTick(abs(wetLoL));
+      wetLoR *= compLoR.compTick(abs(wetLoR));
+    
+      wetLoL = (loDry * wetLoL) + (loWet * tanh(wetLoL));
+      wetLoR = (loDry * wetLoR) + (loWet * tanh(wetLoR));
+    );
+    
+    (hiWet > 0.0) ?
+    (
+      wetHiL = (hiDry * wetHiL) + (hiWet * tanh(wetHiL * highDrive) * highComp);
+      wetHiR = (hiDry * wetHiR) + (hiWet * tanh(wetHiR * highDrive) * highComp);
+    
+      wetHiL *= compHiL.compTick(abs(wetHiL));
+      wetHiR *= compHiR.compTick(abs(wetHiR));
+    );
+    
+    wetLoL *= loTrim;
+    wetLoR *= loTrim;
+    
+    wetHiL *= hiTrim;
+    wetHiR *= hiTrim;
+    
+    spl0 = (amountDry * spl0) + (amountWet * (wetLoL + wetHiL));
+    spl1 = (amountDry * spl1) + (amountWet * (wetLoR + wetHiR));
+    
+    spl0 *= outTrim;
+    spl1 *= outTrim;
+  )
+  
