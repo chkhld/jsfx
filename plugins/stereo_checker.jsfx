@@ -1,0 +1,89 @@
+// Stereo Checker
+//
+// Displays the inter-channel relation of a two-channel input signal.
+//
+// Super simple monitoring tool that analyzes the audio going into it and tells
+// you the relation of the two input channels.
+//
+// So... why would you want this?
+//
+// Especially when collaborating with others, it's common to send project files
+// back and forth. When you receive e.g. a WAV file that is displayed in Reaper
+// with two channel lanes, it's quite possible that the audio on those channels
+// isn't actually a real stereo signal (with different content on both channels)
+// but just a mono signal (with identical audio on both channels) that has been
+// incorrectly exported or encoded at some point.
+//
+// If you have such a file, that appears to be stereo but in truth is only mono,
+// then you can save a bit of project size and processing power by removing the
+// duplicate (and thereby completely unnecessary) audio channel from it.
+//
+// To evaluate if your audio clip is really stereo, or only mono after all, you
+// would usually have to mess around with routing tricks or the phase inversion
+// test, and that's a bit much effort. Instead, just run your clip through this
+// plugin and it will tell you how the audio channels are related.
+//
+// If playback is paused and/or no signal is received, the display says Silence.
+// If signal is being received and the audio on both channels is identical, the
+// display will say Mono. And finally, a difference between the two channels of
+// incoming audio will make the display say Stereo.
+//
+// That's all there's to it. Simple to use, quick results. :)
+//
+// NOTE: depending on their content and processing, some audio signals can jump
+// between Mono and Stereo. So it can be beneficial to let this plugin run over
+// longer portions of audio, to see if what looks like a normal mono signal for
+// the most part really doesn't have some stereo sound effect or section burned
+// into it somewhere. Or just keep it on the master all the time by default, it
+// doesn't use any worthwile CPU resources anyway. :)
+//
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility analysis meter mono stereo
+//
+desc: Stereo Checker
+
+// This plugin only needs input pins, it writes no output
+in_pin:Input L
+in_pin:Input R
+
+// Hide input/output meters
+options:no_meter
+
+@init
+  
+  // Sets the foreground colour in RGB 0-255 values
+  function gfxColour (Red, Green, Blue)
+  (
+    // 1/255 = 0.003921568627
+    gfx_set(Red * 0.003921568627, Green * 0.003921568627, Blue * 0.003921568627);
+  );
+  
+@gfx 0 120
+  
+  // Make the background black
+  gfx_clear = 0;
+  
+  // Set GFX position to upper left corner
+  gfx_x = 0;
+  gfx_y = 0;
+  
+  // Set foreground colour to light gray
+  gfxColour(150,150,150);
+  
+  // Set the font to use, make its size relative to the window height
+  gfx_setfont(1, "Arial", gfx_h / 3);
+  
+  // Draw text over the full window, centered horizontally and vertically
+  gfx_drawstr(channelText, 1|4, gfx_w, gfx_h);
+  
+@sample
+  
+  // Analyze the relation of the current two input samples
+  silenceCh1 = (spl0 == 0);
+  silenceCh2 = (spl1 == 0);
+  equal      = (spl0 == spl1);
+  
+  // Decide which text to draw, depending on the relation between the input samples
+  channelText = (silenceCh1 && silenceCh2) ? "Silence" : (equal ? "Mono" : "Stereo");
+  
