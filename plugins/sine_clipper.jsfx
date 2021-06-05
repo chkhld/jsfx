@@ -30,7 +30,7 @@
 // to stop this from happening.
 // 
 // And that's what this clipper does. Samples values outside [-1/2π,+1/2π] are
-// just hard-clipped, everything els einside is soft-clipped using the sine.
+// just hard-clipped, everything else inside is soft-clipped using the sine.
 // 
 // Or to put it into real-world relation by throwing them numbers around again:
 // signal levels of up to ~ +3.922 dBfs (well above 0 dBfs) will NOT merely be
@@ -81,7 +81,7 @@ slider2:dBGain=0<-48,48,0.01>Boost [dB]
   // to boost the signal into this function first, and attenuate it later on by
   // the factor 1/boost.
   //
-  function sineClip (sample) local (above, below, overs, polarity)
+  function sineClip (sample) local (above, below, overs)
   (
     // Evaluate whether the sample is outside of range [-1/2π,+1/2π]
     above = (sample > halfPi);
@@ -91,8 +91,8 @@ slider2:dBGain=0<-48,48,0.01>Boost [dB]
     // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
     // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
     // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
-    // it through the sin() function, which returns values in range [-1,+1] for
-    // peak sample values up to 1/2π, so well over the usual 0 dBfs hard limit.
+    // it through the sin() function, which returns values in range [-1,+1], so
+    // the signal is gently scaled until well over the usual 0 dBfs hard limit.
     //
     sample = overs * sign(sample) + !overs * sin(sample);
   );
@@ -103,7 +103,7 @@ slider2:dBGain=0<-48,48,0.01>Boost [dB]
   gain = dBToGain(dBGain);
   wall = dBToGain(dBCeil);
   
-  // Ceiling-related boost factor for processing
+  // Ceiling-related boost factor
   wallBoost = 1.0 / wall;
   
 @sample
@@ -127,6 +127,7 @@ slider2:dBGain=0<-48,48,0.01>Boost [dB]
     //
     channelSample = sineClip(wallBoost * channelSample) * wall;
     
+    // Write the processed sample to the channel output
     spl(channel) = channelSample;
     
     // Increment counter to next channel
