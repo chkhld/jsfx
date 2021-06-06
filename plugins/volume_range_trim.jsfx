@@ -1,7 +1,21 @@
 // Volume Range Trim
 //
-// Volume adjustment in a selectable +/- Decibel range for
-// more controlled automation moves.
+// Volume adjustment in a selectable +/- Decibel range for controlled automation.
+// 
+// Who needs another volume plugin?! Well, it depends. For regular track control
+// or inter-plugin gain staging, probably nobody.
+//
+// This plugin is aimed at those unhappy with the way the volume envelopes scale
+// in Reaper. Insert this plugin where you need it, select the Range you want to
+// change the volume in, switch the Scaling to make the changes faster or slower,
+// and then automate the Trim Amount slider instead of the track volume envelope.
+//
+// Remember drawing many, many points into an envelope and then messing with the
+// point values and point shapes endlessly, hoping to eventually get them right?
+//
+// Just insert this plugin instead, set a few linear points on the envelope lane
+// for the Trim Amount slider, and restrict or scale the linear envelope changes
+// to more gentle or sudden ones with the Range and Scale options.
 //
 // author: chokehold
 // url:    https://github.com/chkhld/jsfx/
@@ -9,33 +23,110 @@
 //
 desc: Volume Range Trim
 
-slider1:amount=0<-1,1,0.0001>Trim amount
-slider2:range=0<0,3,1{6 dB,12 dB, 24 dB, 48 dB}>Range +/-
+slider1:dBRange=0<0,3,1{6 dB,12 dB, 24 dB, 48 dB}>Range +/-
+slider2:scale=0<0,3,1{Linear,Smooth,Slow,Fast}>Scaling
+slider3
+slider4:amount=0<-1,1,0.000001>Trim amount
+slider5
+slider6:dBMeter=0<-48,48,0.01>Trim meter [dB]
 
 // By not having any in_pin and out_pin assignments, this plugin will
 // automatically adapt to the number of channels of the track.
 
 @init
   
-  // Converts dB values to float gain factors. Divisions
-  // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  // Converts dB values to float gain factors
   function dBToGain (decibels) (pow(10, decibels * 0.05));
   
-  // Scales the slider's normalized [-1,+1] value to the
-  // relative amount of decibels set in the range param.
-  function sliderTodB () local (decibels)
+  // VALUE INTERPOLATION
+  //
+  // Return interpolated value at position [0,1] between
+  // two not necessarily related input values.
+  //
+  // Implemented after Paul Bourke and Lewis Van Winkle
+  // http://paulbourke.net/miscellaneous/interpolation/
+  // https://codeplea.com/simple-interpolation
+  //
+  // Basic linear interpolation, constant speed
+  function linearInterpolation (value1, value2, position)
   (
-    // The amount of max. Decibels according to range parameter
-    decibels = 6 * pow(2, range);
-    
-    // Range dB scaled by the fader value
-    amount * decibels;
+    (value1 * (1.0 - position) + value2 * position);
   );
+  //
+  // Slow start, fast stop
+  function accelerate (value)
+  (
+    linearInterpolation(0.0, 1.0, sqr(value));
+  );
+  //
+  // Fast start, slow stop
+  function decelerate (value)
+  (
+    linearInterpolation(0.0, 1.0, 1.0 - sqr(1.0-value));
+  );
+  
+  // SMOOTHEST STEP
+  //
+  // Particularly nice SmoothStep varation.
+  //
+  // Implemented after Kyle McDonald
+  // https://twitter.com/kcimc/status/580738643347804160?lang=en
+  // 
+  // Slow start, slow stop
+  function smoothestStep (value) local (v2, v4, v5, v6, v7)
+  (
+    v2 = value*value; v4 = v2*v2; v5 = v4*value; v6 = v5*value; v7 = v6*value;
+    (-20.0*v7 + 70.0*v6 - 84.0*v5 + 35.0*v4);
+  );
+  
+  // Flags to keep track of parameter changes
+  previousAmount = -100;
+  previousRange  = -1;
+  previousScale  = -1;
+  
+  // Stores the selected Range value as positive Decibels
+  decibels = 0;
+  
+  // Amount slider value after scaling was applied
+  scaledAmount = 0;
+  
+  // Stores the Range scaled by the Amount slider as signed Decibels
+  dBTrim = 0;
   
 @slider
   
-  // Convert dB change to float gain factor
-  trim = dBToGain(sliderTodB());
+  // If the Range value was changed
+  (dBRange != previousRange) ?
+  (
+    // Recalculate the scale of dB to scale with the Amount slider
+    decibels = 6 * pow(2, dBRange);
+    
+    // Update the flag to not recalculate this again unless it needs to be
+    previousRange = dBRange;
+  );
+  
+  // If the Amount slider was changed
+  (amount != previousAmount) || (scale != previousScale) ?
+  (
+    // Scale the Amount slider value
+    /* Default scale Linear */ scaledAmount = amount;
+    scale == 1 ?  /* Smooth */ scaledAmount = smoothestStep(abs(amount)) * sign(amount);
+    scale == 2 ?  /* Slow   */ scaledAmount = accelerate(abs(amount)) * sign(amount);
+    scale == 3 ?  /* Fast   */ scaledAmount = decelerate(abs(amount)) * sign(amount);
+    
+    // Update the flags to not recalculate this again unless it needs to be
+    previousScale  = scale;
+    previousAmount = amount;
+  );
+  
+  // Scale the Range by the scaled Amount value and write to buffer variable
+  dBTrim = scaledAmount * decibels;
+  
+  // Turn the scaled volume adjustment from Decibels into a float gain factor
+  trim = dBToGain(dBTrim);
+  
+  // Make sure the Meter slider always reflects the latest Trim dB value
+  dBMeter = dBTrim;
   
 @sample
   
@@ -51,3 +142,4 @@ slider2:range=0<0,3,1{6 dB,12 dB, 24 dB, 48 dB}>Range +/-
     // Increment counter to next channel
     channel += 1;
   );
+  
