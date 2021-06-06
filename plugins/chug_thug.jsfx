@@ -1,7 +1,5 @@
 // Chug Thug
 //
-// Simple split-band processor to tame distorted guitars' low end when chugging.
-//
 // Electric guitars like to build up a lot of (unnecessary) low frequency energy
 // when playing palm mutes, especially if larger amounts of drive and distortion
 // are involved. If you EQ the low frequencies out, guitars will sound thin when
@@ -91,41 +89,57 @@ out_pin:Output R
   // Converts float gain factors to dB values
   function gainTodB (float) (log(max(FLOAT_FLOOR, abs(float))) * M_LN10_20);
   
-  // BUTTERWORTH FILTER WITH VARIABLE ORDER ------------------------------------
+  // LINKWITZ-RILEY 4TH ORDER FILTER -------------------------------------------
   //
-  // Implemented after Exstrom Laboratories LLC
-  // http://www.exstrom.com/journal/sigproc/
-  //
-  // Filter bank memory management
-  // 
-  bwFilterBank = 1000; // Memory address of first filter instance
-  bwFilterSize = 25;   // Size of memory addresses per filter instance
+  // Implemented after Lubomir I. Ivanov
+  // https://www.musicdsp.org/en/latest/Filters/266-4th-order-linkwitz-riley-filters.html
   //
   // Per-sample processing function
   //
-  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  function lr4Tick (sample) instance (a0,a1,a2,a3,a4,b0,b1,b2,b3,xm0,xm1,xm2,xm3,ym0,ym1,ym2,ym3) 
+                            local    (buffer)
   (
-    output = sample; step = 0;
-    while (step < stack)
-    (
-      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
-      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
-      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
-    );
-    output;
+    buffer = sample;
+    sample = a0*sample + a1*xm0 + a2*xm1 + a3*xm2 + a4*xm3 - b0*ym0 - b1*ym1 - b2*ym2 - b3*ym3;
+    xm3 = xm2; xm2 = xm1; xm1 = xm0; xm0 = buffer;
+    ym3 = ym2; ym2 = ym1; ym1 = ym0; ym0 = sample;
+    sample;
+  );
+  //
+  // Low pass filter
+  //
+  function lr4LP (SR, Hz) instance (a0,a1,a2,a3,a4,b0,b1,b2,b3,xm0,xm1,xm2,xm3,ym0,ym1,ym2,ym3) 
+                          local    (sq_tmp1,sq_tmp2,sq2_tmp1,sq2_tmp2,a_tmp)
+  (
+    wc  = 2*$pi*Hz; wc2 = wc*wc; wc3 = wc2*wc; wc4 = wc2*wc2; wc2x4 = wc2*4; wc4x6 = wc4*6;
+    k  = wc/tan($pi*Hz/SR); k2 = k*k; k3 = k2*k; k4 = k2*k2;
+    sq_tmp1 = sqrt(2)*wc3*k; sq_tmp2 = sqrt(2)*wc*k3;
+    sq2_tmp1 = 2*sq_tmp1; sq2_tmp2 = 2*sq_tmp2;
+    a_tmp = 4*wc2*k2+2.0*sq_tmp1+k4+2.0*sq_tmp2+wc4;
+    b0 = (4.0 * (wc4 + sq_tmp1 - k4 - sq_tmp2))  / a_tmp;
+    b1 = (6.0 * wc4 - 8.0 * wc2 * k2 + 6.0 * k4) / a_tmp;
+    b2 = (4.0 * (wc4 - sq_tmp1 + sq_tmp2 - k4))  / a_tmp;
+    b3 = (k4 - 2.0 * sq_tmp1 + wc4 - 2.0 * sq_tmp2 + 4.0 * wc2 * k2) / a_tmp;
+    a0 = wc4/a_tmp; a1 = 4*wc4/a_tmp; a2 = 6*wc4/a_tmp; a3 = a1; a4 = a0;
+    xm0=xm1=xm2=xm3=ym0=ym1=ym2=ym3=0.0;
   );
   //
   // High pass filter
   //
-  function bwHP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  function lr4HP (SR, Hz) instance (a0,a1,a2,a3,a4,b0,b1,b2,b3,xm0,xm1,xm2,xm3,ym0,ym1,ym2,ym3) 
+                          local    (sq_tmp1,sq_tmp2,sq2_tmp1,sq2_tmp2,a_tmp)
   (
-    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
-    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = -2.0; step = 0;
-    while (step < order)
-    (
-      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
-      a[step]  = rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
-    );
+    wc  = 2*$pi*Hz; wc2 = wc*wc; wc3 = wc2*wc; wc4 = wc2*wc2; wc2x4 = wc2*4; wc4x6 = wc4*6;
+    k  = wc/tan($pi*Hz/SR); k2 = k*k; k3 = k2*k; k4 = k2*k2;
+    sq_tmp1 = sqrt(2)*wc3*k; sq_tmp2 = sqrt(2)*wc*k3;
+    sq2_tmp1 = 2*sq_tmp1; sq2_tmp2 = 2*sq_tmp2;
+    a_tmp = 4*wc2*k2+2.0*sq_tmp1+k4+2.0*sq_tmp2+wc4;
+    b0 = (4.0 * (wc4 + sq_tmp1 - k4 - sq_tmp2))  / a_tmp;
+    b1 = (6.0 * wc4 - 8.0 * wc2 * k2 + 6.0 * k4) / a_tmp;
+    b2 = (4.0 * (wc4 - sq_tmp1 + sq_tmp2 - k4))  / a_tmp;
+    b3 = (k4 - 2.0 * sq_tmp1 + wc4 - 2.0 * sq_tmp2 + 4.0 * wc2 * k2) / a_tmp;
+    a0 = k4 / a_tmp; a1 = -4 * k4 / a_tmp; a2 = 6 * k4 / a_tmp; a3 = a1; a4 = a0;
+    xm0=xm1=xm2=xm3=ym0=ym1=ym2=ym3=0.0;
   );
   
   // PRIMITIVE ENVELOPE FOLLOWER
@@ -320,6 +334,9 @@ out_pin:Output R
   compFeedbk = 0.0;
   autoGain = 1.0;
   
+  // Previously known Crossover Cutoff Frequency
+  cutoffFreq = 0;
+  
 @slider
   
   // Flags to indicate whether or not 2-channel mode is linked
@@ -335,9 +352,19 @@ out_pin:Output R
   drive   = dBToGain(dBDrive);
   pad     = dBToGain(-dBDrive);
   
-  // Set up the filters
-  hpL.bwHP(srate, hzBand, 1, bwFilterBank+(0*bwFilterSize));
-  hpR.bwHP(srate, hzBand, 1, bwFilterBank+(1*bwFilterSize));
+  // Only reset the filters if the cutoff frequency has changed.
+  // (Avoids zipper noises from buffer resets)
+  (cutoffFreq != hzBand) ? 
+  (
+    // Set up the filters
+    hpL.lr4HP(srate, hzBand);
+    hpR.lr4HP(srate, hzBand);
+    lpL.lr4LP(srate, hZBand);
+    lpR.lr4LP(srate, hZBand);
+    
+    // Update previously known Crossover Cutoff Frequency to current one
+    cutoffFreq = hzBand;
+  );
   
   // Prepare two compressor instances, one for each channel.
   compL.compSetup(compAttack, compRelease, compWindow, compThresh, compRatio, compKnee, maxRange, compFeedbk, autoGain);
@@ -359,9 +386,11 @@ out_pin:Output R
     signal *= gain;
     
     // Split the signal up into low and high bands. The high
-    // band will not be processed at all.
-    hiL = hpL.bwTick(signal);
-    loL = signal - hiL;
+    // band will not get any processing at all, but also has
+    // to be filtered for the sake of phase consistency when
+    // the bands are summed back together later on.
+    hiL = hpL.lr4Tick(signal);
+    loL = lpL.lr4Tick(signal);
     
     // Apply drive to press the low end up into the threshold,
     // the strength of this depends on the Amount slider
@@ -391,11 +420,11 @@ out_pin:Output R
     spl0 *= gain;
     spl1 *= gain;
     
-    hiL = hpL.bwTick(spl0);
-    hiR = hpR.bwTick(spl1);
+    hiL = hpL.lr4Tick(spl0);
+    hiR = hpR.lr4Tick(spl1);
     
-    loL = spl0 - hiL;
-    loR = spl1 - hiR;
+    loL = lpL.lr4Tick(spl0);
+    loR = lpR.lr4Tick(spl1);
     
     loL *= drive;
     loR *= drive;
