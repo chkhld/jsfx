@@ -70,65 +70,85 @@ out_pin:Output R
   // Converts float gain factors to dB values
   function gainTodB (float) (log(max(FLOAT_FLOOR, abs(float))) * M_LN10_20);
   
-  // Hyperbolic tangent approximation
-  // 
-  // Implemented after nVidia
-  // https://developer.download.nvidia.com/cg/tanh.html
+  // SINE CLIPPING -------------------------------------------------------------
   //
-  function tanh (number) local (exp2x)
+  // The output of the sine function is within the range [-1,+1] as long as its
+  // input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
+  // overdrive, with less distortion than common hyperbolic tangent saturation.
+  //
+  // This type of clipping doesn't use a ceiling, if you want one then you have
+  // to boost the signal into this function first, and attenuate it later on by
+  // the factor 1/boost.
+  //
+  halfPi = $pi * 0.5;
+  //
+  function sineClip (sample) local (above, below, overs, polarity)
   (
-    exp2x = exp(2.0 * number);
-    (exp2x - 1.0) / (exp2x + 1.0);
+    // Evaluate whether the sample is outside of range [-1/2π,+1/2π]
+    above = (sample > halfPi);
+    below = (sample < -halfPi);
+    overs = (above || below);
+    
+    // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
+    // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
+    // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
+    // it through the sin() function, which returns values in range [-1,+1] for
+    // peak sample values up to 1/2π, so well over the usual 0 dBfs hard limit.
+    //
+    sample = overs * sign(sample) + !overs * sin(sample);
   );
   
-  // BUTTERWORTH FILTER WITH VARIABLE ORDER ------------------------------------
+  // LINKWITZ-RILEY 4TH ORDER FILTER -------------------------------------------
   //
-  // Implemented after Exstrom Laboratories LLC
-  // http://www.exstrom.com/journal/sigproc/
-  //
-  // Filter bank memory management
-  // 
-  bwFilterBank = 0;    // Memory address of first filter instance
-  bwFilterSize = 100;  // Size of memory addresses per filter instance
+  // Implemented after Lubomir I. Ivanov
+  // https://www.musicdsp.org/en/latest/Filters/266-4th-order-linkwitz-riley-filters.html
   //
   // Per-sample processing function
   //
-  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  function lr4Tick (sample) instance (a0,a1,a2,a3,a4,b0,b1,b2,b3,xm0,xm1,xm2,xm3,ym0,ym1,ym2,ym3) 
+                            local    (buffer)
   (
-    output = sample; step = 0;
-    while (step < stack)
-    (
-      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
-      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
-      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
-    );
-    output;
+    buffer = sample;
+    sample = a0*sample + a1*xm0 + a2*xm1 + a3*xm2 + a4*xm3 - b0*ym0 - b1*ym1 - b2*ym2 - b3*ym3;
+    xm3 = xm2; xm2 = xm1; xm1 = xm0; xm0 = buffer;
+    ym3 = ym2; ym2 = ym1; ym1 = ym0; ym0 = sample;
+    sample;
   );
   //
   // Low pass filter
   //
-  function bwLP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  function lr4LP (SR, Hz) instance (a0,a1,a2,a3,a4,b0,b1,b2,b3,xm0,xm1,xm2,xm3,ym0,ym1,ym2,ym3) 
+                          local    (sq_tmp1,sq_tmp2,sq2_tmp1,sq2_tmp2,a_tmp)
   (
-    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
-    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
-    while (step < order)
-    (
-      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
-      a[step] = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
-    );
+    wc  = 2*$pi*Hz; wc2 = wc*wc; wc3 = wc2*wc; wc4 = wc2*wc2; wc2x4 = wc2*4; wc4x6 = wc4*6;
+    k  = wc/tan($pi*Hz/SR); k2 = k*k; k3 = k2*k; k4 = k2*k2;
+    sq_tmp1 = sqrt(2)*wc3*k; sq_tmp2 = sqrt(2)*wc*k3;
+    sq2_tmp1 = 2*sq_tmp1; sq2_tmp2 = 2*sq_tmp2;
+    a_tmp = 4*wc2*k2+2.0*sq_tmp1+k4+2.0*sq_tmp2+wc4;
+    b0 = (4.0 * (wc4 + sq_tmp1 - k4 - sq_tmp2))  / a_tmp;
+    b1 = (6.0 * wc4 - 8.0 * wc2 * k2 + 6.0 * k4) / a_tmp;
+    b2 = (4.0 * (wc4 - sq_tmp1 + sq_tmp2 - k4))  / a_tmp;
+    b3 = (k4 - 2.0 * sq_tmp1 + wc4 - 2.0 * sq_tmp2 + 4.0 * wc2 * k2) / a_tmp;
+    a0 = wc4/a_tmp; a1 = 4*wc4/a_tmp; a2 = 6*wc4/a_tmp; a3 = a1; a4 = a0;
+    xm0=xm1=xm2=xm3=ym0=ym1=ym2=ym3=0.0;
   );
   //
   // High pass filter
   //
-  function bwHP (SR, Hz, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  function lr4HP (SR, Hz) instance (a0,a1,a2,a3,a4,b0,b1,b2,b3,xm0,xm1,xm2,xm3,ym0,ym1,ym2,ym3) 
+                          local    (sq_tmp1,sq_tmp2,sq2_tmp1,sq2_tmp2,a_tmp)
   (
-    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
-    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = -2.0; step = 0;
-    while (step < order)
-    (
-      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
-      a[step]  = rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
-    );
+    wc  = 2*$pi*Hz; wc2 = wc*wc; wc3 = wc2*wc; wc4 = wc2*wc2; wc2x4 = wc2*4; wc4x6 = wc4*6;
+    k  = wc/tan($pi*Hz/SR); k2 = k*k; k3 = k2*k; k4 = k2*k2;
+    sq_tmp1 = sqrt(2)*wc3*k; sq_tmp2 = sqrt(2)*wc*k3;
+    sq2_tmp1 = 2*sq_tmp1; sq2_tmp2 = 2*sq_tmp2;
+    a_tmp = 4*wc2*k2+2.0*sq_tmp1+k4+2.0*sq_tmp2+wc4;
+    b0 = (4.0 * (wc4 + sq_tmp1 - k4 - sq_tmp2))  / a_tmp;
+    b1 = (6.0 * wc4 - 8.0 * wc2 * k2 + 6.0 * k4) / a_tmp;
+    b2 = (4.0 * (wc4 - sq_tmp1 + sq_tmp2 - k4))  / a_tmp;
+    b3 = (k4 - 2.0 * sq_tmp1 + wc4 - 2.0 * sq_tmp2 + 4.0 * wc2 * k2) / a_tmp;
+    a0 = k4 / a_tmp; a1 = -4 * k4 / a_tmp; a2 = 6 * k4 / a_tmp; a3 = a1; a4 = a0;
+    xm0=xm1=xm2=xm3=ym0=ym1=ym2=ym3=0.0;
   );
   
   // ATTACK / RELEASE ENVELOPE
@@ -226,6 +246,10 @@ out_pin:Output R
     // NOT an actual sample value.
     GR * calc.makeup;
   );
+  
+  // Used to keep track of cutoff frequency changes
+  lastLoFreq  = 0;
+  lastHiFreq = 0;
 
 @slider
   
@@ -239,18 +263,30 @@ out_pin:Output R
   hiWet = procHi * 0.01;
   hiDry = 1.0 - hiWet;
   
-  // Update filter properties
-  lpL.bwLP(srate, hzSplitLo, 4, bwFilterBank);
-  lpR.bwLP(srate, hzSplitLo, 4, bwFilterBank+bwFilterSize);
+  // Only recalculate Low crossover filters if cutoff was changed
+  (lastLoFreq != hzSplitLo) ?
+  (
+    // Update filter properties
+    lpL.lr4LP(srate, hzSplitLo);
+    lpR.lr4LP(srate, hzSplitLo);
+    
+    lastLoFreq = hzSplitLo;
+  );
   
-  hpL.bwHP(srate, hzSplitHi, 4, bwFilterBank+(2*bwFilterSize));
-  hpR.bwHP(srate, hzSplitHi, 4, bwFilterBank+(3*bwFilterSize));
-  
-  hzHighCutMin = hzSplitHi * 2;
-  hzHighCutFrq = hzHighCutMin + (hiDry * 10000);
-  
-  hcL.bwLP(srate, hzHighCutFrq, 4, bwFilterBank+(4*bwFilterSize));
-  hcR.bwLP(srate, hzHighCutFrq, 4, bwFilterBank+(5*bwFilterSize));
+  // Only recalculate High crossover filters if cutoff was changed
+  (lastHiFreq != hzSplitHi) ? 
+  (
+    hpL.lr4HP(srate, hzSplitHi);
+    hpR.lr4HP(srate, hzSplitHi);
+    
+    hzHighCutMin = hzSplitHi * 2;
+    hzHighCutFrq = hzHighCutMin + (hiDry * 10000);
+    
+    hcL.lr4LP(srate, hzHighCutFrq);
+    hcR.lr4LP(srate, hzHighCutFrq);
+    
+    lastHiFreq = hzSplitHi;
+  );
   
   // Set low band compressor characteristics
   attackLo = 101 - procLo; // 0% = 101ms, 50% = 51ms, 100% = 1ms
@@ -303,11 +339,11 @@ out_pin:Output R
     signal = input * inputGain;
     
     // Split off low and high band signals
-    wetLo = lpL.bwTick(signal);
-    wetHi = hpL.bwTick(signal);
+    wetLo = lpL.lr4Tick(signal);
+    wetHi = hpL.lr4Tick(signal);
     
     // Process high band high-cut
-    wetHi = hcL.bwTick(wetHi);
+    wetHi = hcL.lr4Tick(wetHi);
     
     // If low band squeeze enabled
     (loWet > 0.0) ? 
@@ -316,14 +352,14 @@ out_pin:Output R
       wetLo *= compLoL.compTick(abs(wetLo));
       
       // Add some gentle post-compression harmonics to low band
-      wetLo = (loDry * wetLo) + (loWet * tanh(wetLo));
+      wetLo = (loDry * wetLo) + (loWet * sineClip(wetLo));
     );
     
     // If high band squeeze enabled
     (hiWet > 0.0) ?
     (
       // Apply drive (and compensation) to high band
-      wetHi = (hiDry * wetHi) + (hiWet * tanh(wetHi * highDrive) * highComp);
+      wetHi = (hiDry * wetHi) + (hiWet * sineClip(wetHi * highDrive) * highComp);
       
       // Apply compression to high band
       wetHi *= compHiL.compTick(abs(wetHi));
@@ -347,28 +383,28 @@ out_pin:Output R
     signalL = spl0 * inputGain;
     signalR = spl1 * inputGain;
     
-    wetLoL = lpL.bwTick(signalL);
-    wetLoR = lpR.bwTick(signalR);
+    wetLoL = lpL.lr4Tick(signalL);
+    wetLoR = lpR.lr4Tick(signalR);
     
-    wetHiL = hpL.bwTick(signalL);
-    wetHiR = hpR.bwTick(signalR);
+    wetHiL = hpL.lr4Tick(signalL);
+    wetHiR = hpR.lr4Tick(signalR);
     
-    wetHiL = hcL.bwTick(wetHiL);
-    wetHiR = hcR.bwTick(wetHiR);
+    wetHiL = hcL.lr4Tick(wetHiL);
+    wetHiR = hcR.lr4Tick(wetHiR);
     
     (loWet > 0.0) ? 
     (
       wetLoL *= compLoL.compTick(abs(wetLoL));
       wetLoR *= compLoR.compTick(abs(wetLoR));
     
-      wetLoL = (loDry * wetLoL) + (loWet * tanh(wetLoL));
-      wetLoR = (loDry * wetLoR) + (loWet * tanh(wetLoR));
+      wetLoL = (loDry * wetLoL) + (loWet * sineClip(wetLoL));
+      wetLoR = (loDry * wetLoR) + (loWet * sineClip(wetLoR));
     );
     
     (hiWet > 0.0) ?
     (
-      wetHiL = (hiDry * wetHiL) + (hiWet * tanh(wetHiL * highDrive) * highComp);
-      wetHiR = (hiDry * wetHiR) + (hiWet * tanh(wetHiR * highDrive) * highComp);
+      wetHiL = (hiDry * wetHiL) + (hiWet * sineClip(wetHiL * highDrive) * highComp);
+      wetHiR = (hiDry * wetHiR) + (hiWet * sineClip(wetHiR * highDrive) * highComp);
     
       wetHiL *= compHiL.compTick(abs(wetHiL));
       wetHiR *= compHiR.compTick(abs(wetHiR));
