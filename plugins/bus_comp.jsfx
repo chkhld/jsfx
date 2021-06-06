@@ -89,6 +89,9 @@ out_pin:Output R
 
 @init
   
+  // Stop Reaper from re-initializing the plugin every time playback is reset
+  ext_noinit = 1;
+  
   // Various convenience constants
   M_LN10_20 = 8.68588963806503655302257837833210164588794011607333;
   floatFloor = 0.0000000630957;  // dBToGain --> ~ -144 dBfs
@@ -631,3 +634,4 @@ out_pin:Output R
     spl0 = dryWet * dryL + wetDry * spl0;
     spl1 = dryWet * dryR + wetDry * spl1;
   );
+  
