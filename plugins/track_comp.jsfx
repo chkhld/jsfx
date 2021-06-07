@@ -44,8 +44,8 @@
 //
 // There's a sidechain HP filter that will cut the lows off the detector signal, this is useful
 // to make the compressor respond less to bass-heavy signal parts like kick drums or distorted
-// guitar palm mutes and helps reduce pumping. It is "always on" at 20 Hz, and thereby acts as
-// a DC blocker on the input signal, before any compression or saturation.
+// guitar palm mutes and helps reduce pumping. If it's set to 20 Hz, it's in bypass. To have it
+// filter the key signal, turn it up to somewhere above 20 Hz.
 //
 // Automatic Makeup Gain compensation will factor in an amount of post-compression gain increase.
 // The intention of this is to bring the volume of a signal that was attenuated with compression
@@ -92,7 +92,10 @@ slider14:dBTrim=0<-12, 12, 0.01> Output Gain [dB]
 slider15:pctMix=100<0,100,0.01> Dry/Wet Mix [%]
 slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),Mono (R),Mono (signal L / key R),Mono (key L / signal R)}> Routing
 
-@init
+// Don't need these because of UI metering
+options:no_meter
+
+@init // -----------------------------------------------------------------------
   
   // Stop Reaper from re-initializing the plugin every time playback is reset
   ext_noinit = 1;
@@ -103,9 +106,21 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   halfPi = $PI * 0.5;
   satSpeed = 50.0;  // ms timing for saturation envelope follower
   
-  // Helper functions
-  function dBToGain       (decibels) (10.0 ^ (decibels / 20.0));
-  function fastReciprocal (value)    (sqr(invsqrt(value)));
+  // Used to buffer input/output samples for GUI interaction
+  bufferInput  = 1000; // Raw input values
+  bufferKey    = 1002; // Sidechain key signal
+  bufferGR     = 1004; // Gain reduction as absolute float gain factors
+  bufferOutput = 1006; // Raw output values
+  //
+  bufferClipInput  = 1008;
+  bufferClipKey    = 1010;
+  bufferClipOutput = 1012;
+  
+  // Converts signed dB values to normalized float gain factors.
+  // Divisions are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Converts float gain factors to dB values
   function gainTodB (float) local (below)
   (
     float = abs(float);
@@ -114,7 +129,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     (log(float) * M_LN10_20);
   );
   
-  // DC Blocker to remove near-static frequency content
+  // DC Blocker to filter near-static frequency content
   // that would otherwise "offset" the waveform.
   function dcBlocker () instance (stateIn, stateOut)
   (
@@ -124,21 +139,30 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     this = stateOut;
   );
   
-  // Hyperbolic tangent approximation, used for soft clipping.
+  // SINE CLIPPING -------------------------------------------------------------
   //
-  // Implemented after code posted by Antto on KVR
-  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  // The output of the sine function is within the range [-1,+1] as long as its
+  // input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
+  // overdrive, with less distortion than common hyperbolic tangent saturation.
   //
-  function softclip (number) local (xa, x2, x3, x4, x7, res)
+  // This type of clipping doesn't use a ceiling, if you want one then you have
+  // to boost the signal into this function first, and attenuate it later on by
+  // the factor 1/boost.
+  //
+  function sineClip (sample) local (above, below, overs, polarity)
   (
-    xa = abs(number);
-    x2 = xa * xa;
-    x3 = x2 * xa;
-    x4 = x2 * x2;
-    x7 = x4 * x3;
-    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    // Evaluate whether the sample is outside of range [-1/2π,+1/2π]
+    above = (sample > halfPi);
+    below = (sample < -halfPi);
+    overs = (above || below);
     
-    sign(number) * res;
+    // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
+    // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
+    // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
+    // it through the sin() function, which returns values in range [-1,+1] for
+    // peak sample values up to 1/2π, so well over the usual 0 dBfs hard limit.
+    //
+    sample = overs * sign(sample) + !overs * sin(sample);
   );
   
   // SATURATION PROCESS
@@ -149,7 +173,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   function saturate (drive) local (boost)
   (
     boost = 1.0 + (1.0 - drive);
-    this = (dryMix * this) + (satMix * softClip(this * boost));
+    this = (dryMix * this) + (satMix * sineClip(this * boost));
   );
   
   // SIDECHAIN FILTER
@@ -160,8 +184,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   //
   function eqHP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
   (
-    g = tan(halfPi * (Hz / srate)); k = fastReciprocal(Q);
-    a1 = fastReciprocal(1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    g = tan(halfPi * (Hz / srate)); k = 1/Q;
+    a1 = 1/(1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
     m0 = 1.0; m1 = -k; m2 = -1.0;
   );
   //
@@ -181,7 +205,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   //
   function envSetup (msTime) instance (coeff) local ()
   (
-    coeff = exp(-1000 * fastReciprocal(msTime * srate));
+    coeff = exp(-1000 / (msTime * srate));
   );
   //
   // It's possible to do the calculations in dB or in gain factors.
@@ -211,8 +235,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
   (
     // Set attack and release time coefficients
-    coeffAtt = exp(-1000 * fastReciprocal(msAttack  * srate));
-    coeffRel = exp(-1000 * fastReciprocal(msRelease * srate));
+    coeffAtt = exp(-1000 / (msAttack  * srate));
+    coeffRel = exp(-1000 / (msRelease * srate));
   );
   //
   // This calculates the new envelope state for the current sample.
@@ -282,10 +306,10 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // https://music.columbia.edu/pipermail/music-dsp/2009-September/068027.html
   // https://www.blackghostaudio.com/blog/the-ultimate-guide-to-compression
   //
-  function gainCalcSetup (dBThreshold, fullRatio, dBKnee, dBRange) instance (threshold, ratio, makeup, knee, kneeWidth, kneeUpper, kneeLower, range) local ()
+  function gainCalcSetup (dBThreshold, fullRatio, dBKnee, dBRange) instance (threshold, ratio, makeup, knee, kneeWidth, kneeUpper, kneeLower, range)
   (
     threshold = dBThreshold;            // signed dBfs
-    ratio = fastReciprocal(fullRatio);  // 1/x --> compression < 1, expansion > 1
+    ratio = 1/fullRatio;  // 1/x --> compression < 1, expansion > 1
     makeup = dBToGain(abs((threshold + (abs(threshold) * ratio)) * 0.4)); // 0.5 went too loud too quickly
     knee = dBKnee;
     kneeWidth = knee * 0.5;
@@ -294,7 +318,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     range = dBRange;
   );
   //
-  function gainCalcTick (dBsample) instance (ratio, knee, kneeLower, kneeUpper, threshold, range) local (dBReduction, slope)
+  function gainCalcTick (dBsample) instance (ratio, knee, kneeLower, kneeUpper, threshold, range) 
+                                   local    (dBReduction, slope)
   (
     dBReduction = dBsample;
     slope = 1.0 - ratio;
@@ -326,7 +351,7 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // dBKnee: absolute/positive dB
   // pctFeedback: % of previous GR detector feedback
   //
-  function compSetup (msAttack, msRelease, msWindow, dBThreshold, fullRatio, dBKnee, dBRange, pctFeedback, autoMakeup) instance (attRel, rms, calc, feedback, autogain) local ()
+  function compSetup (msAttack, msRelease, msWindow, dBThreshold, fullRatio, dBKnee, dBRange, pctFeedback, autoMakeup) instance (attRel, rms, calc, feedback, autogain)
   (
     attRel.attRelSetup(msAttack, msRelease);
     rms.rmsSetup(msWindow);
@@ -335,7 +360,8 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     autogain = autoMakeup;
   );
   //
-  function compTick (sample) instance (GR, feedback, rms, attRel, calc, autogain) local (feedbackFactor, keyGain, keyDecibels, gainAdjust)
+  function compTick (sample) instance (GR, feedback, rms, attRel, calc, autogain) 
+                             local    (feedbackFactor, keyGain, keyDecibels, gainAdjust)
   (
     // The amount of previous GR to apply to this key sample,
     // this is essentially a 1-sample-delayed feedback.
@@ -371,13 +397,46 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     GR * gainAdjust;
   );
   
+  // CONVENIENCE VARIABLES -----------------------------------------------------
+  //
+  // Makes handling channel buffers more accessible
+  L = 0;
+  R = 1;
+  channelNames = 100;
+  channelNames[L] = "L";
+  channelNames[R] = "R";
+  //
+  // The speed (dB per second) at which the meters return to 0 (well... -144)
+  falloff = dBToGain(-36 / srate);
+  //
+  // Falloff level at which clipping markers clear again
+  clipClear = dBToGain(-54); // 1.5 sec
+  //
+  // Used in @gfx to check if size has changed
+  lastWidth  = -1;
+  lastHeight = -1;
+  //
+  // Various buffered dB values as float gain factors
+  dB_Neg48 = dBToGain(-48);
+  dB_Neg36 = dBToGain(-36);
+  dB_Neg24 = dBToGain(-24);
+  dB_Neg12 = dBToGain(-12);
+  dB_Neg06 = dBToGain(-6);
+  dB_Neg03 = dBToGain(-3);
+  dB_Zero0 = dBToGain(0);
+  //
+  // Transparency values; I got tired of changing them repetitively
+  alphaMeterBars  = 0.75;
+  alphaMeterClip  = 0.75;
+  alphaMeterText  = 0.75;
+  alphaMarkerHard = 0.8;
+  alphaMarkerText = 0.8;
+  
   // Set up the dynamic saturation envelope followers
   satL.satSetup(satSpeed);
   satR.satSetup(satSpeed);
   
-  dcBlockerL = dcBlockerR = 0.0;
-  
-@slider
+@slider  // --------------------------------------------------------------------
   
   // The maximum amount of gain reduction to apply
   maxRange = (compRange == -40) ? -400 : compRange;
@@ -397,6 +456,9 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // Turn input/output dB gain values into float factors
   gainIn  = dBToGain(dBGain);
   gainOut = dBToGain(dBTrim);
+  //
+  // Below only required for GUI drawing
+  gainThreshold = dBToGain(compThresh);
   
   // The amount of saturation added to the signal
   satMix = saturation * 0.01;
@@ -406,45 +468,412 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   wetDry = pctMix * 0.01;
   dryWet = 1.0 - wetDry;
   
-@sample
+@gfx 0 200 // ------------------------------------------------------------------
+
+  // Reset the canvas to black
+  gfx_dest = -1;
+  gfx_clear = 0;
+  gfx_a = 1.0;
   
-  // Storing dry samples here for later dry/wet mixing
-  dryL = spl0;
-  dryR = spl1;
-  
-  // Dummy-assigning these here so that they exist
-  // outside the scope of the if-blocks below.
-  keyL = keyR = 0.0;
-  saturationL = saturationR = 0.0;
-  
-  // Input gain. Branching is slow, so it's faster to
-  // just do this multiplication instead of running
-  // a check to see if it's needed, i.e. dBGain != 0
-  spl0 *= gainIn;
-  spl1 *= gainIn;
-  
-  // CHANNEL ROUTING MODES
+  // RECALCULATE DIMENSIONS AND RELATIONS --------------------------------------
   //
-  // Stereo channels with internal key/sidechain
-  routing == 0 ?
+  // Only really needs to happen if screen size changes
+  (lastWidth != gfx_w) || (lastHeight != gfx_h) ? 
   (
-    // Filter sidechain samples and make them positive
-    keyL = abs(filterL.eqTick(spl0));
-    keyR = abs(filterR.eqTick(spl1));
+    // Height for marker/label numbers (1px pad + 8px font + 1px pad, and that twice)
+    markers_h = 20;
+    
+    // The main display area that contains the level metering bars
+    display_w = gfx_w - 8; // -4px from right leaves room for overs indication
+    display_h = gfx_h - 2*markers_h; // 1x top, 1x bottom
+    display_y = markers_h; // Top-most Y coordinate
+    
+    // There are 2 channels with 4 meter bars each = 8 meter bars in total
+    pad_h   = 2; // Transparent/black padding between meter bars
+    pad_lane_h = 2; // Transparent/black padding between stereo pairs
+    lane_h  = (display_h / 8) - pad_lane_h; // "One metering bar of any kind"
+    meter_h = lane_h - pad_h; // Each only needs 1x pad underneath
+    half_lane_h = lane_h / 2; // Used for vertically centering text
+    
+    // These are gfx_x values for various elments.
+    X_0dB   = display_w;
+    X_Over  = X_0dB + 1;
+    X_Neg48 = X_0dB * dB_Neg48;
+    X_Neg36 = X_0dB * dB_Neg36;
+    X_Neg24 = X_0dB * dB_Neg24;
+    X_Neg12 = X_0dB * dB_Neg12;
+    X_Neg06 = X_0dB * dB_Neg06;
+    X_Neg03 = X_0dB * dB_Neg03;
+    
+    // Update size flags to not calculate again next cycle
+    lastWidth  = gfx_w;
+    lastHeight = gfx_h;
+  );
+  
+  // THRESHOLD MARKER POSITIONS
+  //
+  // Can't be offloaded to the one-time calculation above, because these will
+  // change without the size of the UI changing.
+  //
+  X_Threshold = X_0dB * gainThreshold;
+  //
+  // Required to calculate label widths below
+  lbl_w = lbl_h = 0;
+  //
+  // Compute the X position of where the Threshold label should go
+  //
+  // Text 0.00 and left of line marker
+  (compThresh == 0) ?
+  (
+    gfx_measurestr("0.00x", lbl_w, lbl_h); // Added x as spacer
+    X_LabelThreshold = X_Threshold - lbl_w;
+  );
+  //
+  // Text -X.XX and left of line marker
+  (compThresh > -3) && (compThresh < 0) ?
+  (
+    gfx_measurestr("-0.00x", lbl_w, lbl_h); // Added x as spacer
+    X_LabelThreshold = X_Threshold - lbl_w;
+  );
+  //
+  // Text -XX.XX and right of line marker
+  (compThresh <= -3) ?
+  (
+    gfx_measurestr("x", lbl_w, lbl_h); // Added xx as spacer
+    X_LabelThreshold = X_Threshold + lbl_w + 2;
+  );
+  
+  // VERTICAL dB MARKER LINES --------------------------------------------------
+  //
+  // For -48 to -3 dBfs
+  gfx_set(1,1,1,0.35); // Dark gray
+  //
+  // -48 dBfs
+  gfx_x = X_Neg48;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -36 dBfs
+  gfx_x = X_Neg36;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -24 dBfs
+  gfx_x = X_Neg24;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -12 dBfs
+  gfx_x = X_Neg12;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -6 dBfs
+  gfx_x = X_Neg06;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -3 dBfs
+  gfx_x = X_Neg03;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // Somewhat lighter, only for 0 dBfs -------------- 0 dBfs
+  gfx_set(1,1,1,0.6); // Gray
+  //
+  // 0 dBfs
+  gfx_x = X_0dB;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  
+  // TEXT dB MARKER LABELS -----------------------------------------------------
+  //
+  gfx_measurestr("-48", lbl_w, lbl_h);
+  //
+  // For -36 to -3 dBfs
+  gfx_set(1,1,1,0.35); // Dark gray
+  //
+  // TOP LABELS ------------------------
+  //
+  gfx_y = 4;
+  gfx_setfont(0);
+  //
+  gfx_x = X_Neg36 + 2;
+  gfx_drawstr("-36");
+  //
+  gfx_x = X_Neg24 + 8;
+  gfx_drawstr("-24");
+  //
+  gfx_x = X_Neg12 + 8;
+  gfx_drawstr("-12");
+  //
+  gfx_x = X_Neg06 + 8;
+  gfx_drawstr("-6");
+  //
+  gfx_x = X_Neg03 + 8;
+  gfx_drawstr("-3");
+  //
+  gfx_x = X_0dB - 14;
+  gfx_drawstr("0");
+  //
+  // BOTTOM LABELS -----------------------
+  //
+  gfx_y = display_h + markers_h + lbl_h;
+  gfx_setfont(0);
+  //
+  gfx_x = X_Neg36 + 2;
+  gfx_drawstr("-36");
+  //
+  gfx_x = X_Neg24 + 8;
+  gfx_drawstr("-24");
+  //
+  gfx_x = X_Neg12 + 8;
+  gfx_drawstr("-12");
+  //
+  gfx_x = X_Neg06 + 8;
+  gfx_drawstr("-6");
+  //
+  gfx_x = X_Neg03 + 8;
+  gfx_drawstr("-3");
+  //
+  gfx_x = X_0dB - 14;
+  gfx_drawstr("0");
+  
+  // THRESHOLD MARKER ----------------------------------------------------------
+  //
+  // Line marker
+  gfx_x = X_Threshold;
+  gfx_y = 0;
+  gfx_set(1,0.5,0,alphaMarkerHard); // Red or Orange
+  gfx_rectto(gfx_x+3,gfx_h);
+  //
+  // Marker label ------------ TOP
+  gfx_x = X_LabelThreshold;
+  gfx_y = lbl_h + 4;
+  gfx_set(1,0.5,0,alphaMarkerText); // Red or Orange
+  gfx_printf("%02.2f", compThresh);
+  //
+  // Marker label ------------ BOTTOM
+  gfx_x = X_LabelThreshold;
+  gfx_y = gfx_h - markers_h - 1;
+  gfx_printf("%02.2f", compThresh);
+  
+  // LEVEL METERING LANES ------------------------------------------------------
+  //
+  // Every channel has multiple meters: raw in, key/sidechain, GR, output.
+  // Meters are grouped per type: input L/R, key L/R, etc.
+  //
+  // Cycle through both plugin channels
+  channel = L;
+  while (channel <= R)
+  (
+    // SAMPLE PREPARATION --------------
+    // 
+    // The processing block always writes up-to-date samples into buffers.
+    // 
+    // Fetch the buffered (absolute) samples and restrict them to a useful range
+    splIn   = max(dB_Neg48, min(dB_Zero0, bufferInput[channel]));
+    splKey  = max(dB_Neg48, min(dB_Zero0, bufferKey[channel]));
+    splGR   = max(dB_Neg48, min(dB_Zero0, bufferGR[channel]));
+    splOut  = max(dB_Neg48, min(dB_Zero0, bufferOutput[channel]));
+    //
+    // Prepare clipping state buffers (reset to 0 if below clearing level)
+    bufferClipInput[channel]  = (bufferClipInput[channel]  > clipClear) * bufferClipInput[channel];
+    bufferClipKey[channel]    = (bufferClipKey[channel]    > clipClear) * bufferClipKey[channel];
+    bufferClipOutput[channel] = (bufferClipOutput[channel] > clipClear) * bufferClipOutput[channel];
+    
+    // METER BAR DRAWING ---------------
+    //
+    // Figure out the Y positions for each meter
+    meterOffset  = (channel * lane_h) + pad_lane_h;
+    meterInput_y = display_y + meterOffset;
+    meterKey_y   = display_y + meterOffset + ((lane_h + pad_lane_h) * 2);
+    meterGR_y    = display_y + meterOffset + ((lane_h + pad_lane_h) * 4);
+    meterOut_y   = display_y + meterOffset + ((lane_h + pad_lane_h) * 6);
+    //
+    (splIn > dB_Neg48) ? // INPUT METER ----------------------------------------
+    (
+      X_SampleIn = max(0, min(display_w, X_0dB * splIn));
+      
+      gfx_y = meterInput_y;
+      gfx_x = 0;
+      gfx_set(0,0.75,0,alphaMeterBars); // Green
+      gfx_rectto(X_SampleIn, meterInput_y+meter_h);
+      
+      // Clipping marker -----
+      bufferClipInput[channel] ?
+      (
+        gfx_y = meterInput_y;
+        gfx_x = X_Over;
+        gfx_set(1,0,0,alphaMeterClip); // Red
+        gfx_rectto(gfx_w, meterInput_y+meter_h);
+      );
+    );
+    //
+    (splKey > dB_Neg48) ? // SIDECHAIN METER -----------------------------------
+    (
+      X_SampleKey = max(0, min(display_w, X_0dB * splKey));
+      
+      gfx_y = meterKey_y;
+      gfx_x = 0;
+      gfx_set(1,0.8,0,alphaMeterBars); // Orange Yellow
+      gfx_rectto(X_SampleKey, meterKey_y+meter_h);
+      
+      // Clipping marker -----
+      bufferClipKey[channel] ?
+      (
+        gfx_y = meterKey_y;
+        gfx_x = X_Over;
+        gfx_set(1,0,0,alphaMeterClip); // Red
+        gfx_rectto(gfx_w, meterKey_y+meter_h);
+      );
+    );
+    //
+    (splGR < 1) ? // GR METER ----------------------------
+    (
+      X_SampleGR = max(0, min(display_w, X_0dB * splGR));
+      
+      gfx_y = meterGR_y;
+      gfx_x = X_SampleGR;
+      gfx_set(1,0.5,0,alphaMeterBars); // Purple
+      gfx_rectto(display_w+1, meterGR_y+meter_h);
+      
+      // GR doesn't need clipping marker...
+    );
+    //
+    (splOut > dB_Neg48) ? // OUTPUT METER --------------------------------------
+    (
+      X_SampleOut = max(0, min(display_w, X_0dB * splOut));
+      
+      gfx_y = meterOut_y;
+      gfx_x = 0;
+      gfx_set(0,0.7,1,alphaMeterBars); // Blue
+      gfx_rectto(X_SampleOut, meterOut_y+meter_h);
+      
+      // Clipping marker -----
+      bufferClipOutput[channel] ?
+      (
+        gfx_y = meterOut_y;
+        gfx_x = X_Over;
+        gfx_set(1,0,0,alphaMeterClip); // Red
+        gfx_rectto(gfx_w, meterOut_y+meter_h);
+      );
+    );
+    
+    // METER BAR LABELS --------------------------------------------------------
+    //
+    // Get dimensions
+    gfx_measurestr("XX", lbl_w, lbl_h);
+    lbl_offset_y = half_lane_h - (lbl_h / 2);
+    //
+    // INPUT LABEL ---------------------
+    gfx_y = meterInput_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0,0,0,alphaMeterText); // Transparent black
+    gfx_drawstr("Input ");
+    gfx_drawstr(channelNames[channel]);
+    //
+    // KEY LABEL -----------------------
+    gfx_y = meterKey_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0,0,0,alphaMeterText); // Transparent black
+    gfx_drawstr("Key ");
+    gfx_drawstr(channelNames[channel]);
+    //
+    // G-R LABEL -----------------------
+    gfx_y = meterGR_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0.5,0.5,0.5,alphaMeterText); // Transparent gray
+    gfx_drawstr("GR ");
+    gfx_drawstr(channelNames[channel]);
+    //
+    // OUTPUT LABEL --------------------
+    gfx_y = meterOut_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0,0,0,alphaMeterText); // Transparent black
+    gfx_drawstr("Output ");
+    gfx_drawstr(channelNames[channel]);
+    
+    // Advance to next channel
+    channel += 1;
+  );
+  
+@sample  // --------------------------------------------------------------------
+  
+  // Safety mechanism to force @gfx recalculation (once) if UI size was changed
+  (gfx_w != lastWidth) || (gfx_h != lastHeight) ? 
+  (
+    lastWidth  = -1;
+    lastHeight = -1;
+  );
+  
+  // STEREO ROUTING MODES
+  //
+  (routing < 2) ? 
+  (
+    // Storing dry samples here for later dry/wet mixing
+    dryL = spl0;
+    dryR = spl1;
+    
+    // Store dry samples in buffer for later dry/wet mixing
+    bufferInput[L] = max(bufferInput[L]*falloff, abs(spl0));
+    bufferInput[R] = max(bufferInput[R]*falloff, abs(spl1));
+    //
+    // Check if the input samples are clipping and store into a buffer
+    bufferClipInput[L] = max(bufferClipInput[L]*falloff, (bufferInput[L]>1));
+    bufferClipInput[R] = max(bufferClipInput[R]*falloff, (bufferInput[R]>1));
+    
+    // Input gain. Branching is slow, so it's faster to
+    // just do this multiplication instead of running
+    // a check to see if it's needed, i.e. dBGain != 0
+    spl0 *= gainIn;
+    spl1 *= gainIn;
+    
+    // Use channel 1+2 inputs if internal sidechain is
+    // selected, otherwise use channel 3+4 input samples
+    // for external sidechain.
+    //
+    scExternal = (routing == 1);
+    keyL = !scExternal * spl0 + scExternal * (spl2 * gainIn);
+    keyR = !scExternal * spl1 + scExternal * (spl3 * gainIn);
+    
+    // Filter sidechain samples (if cutoff > 20 Hz)
+    // 
+    (scFreq > 20) ?
+    (
+      keyL = filterL.eqTick(keyL);
+      keyR = filterR.eqTick(keyR);
+    );
+    
+    // Make key signal absolute from this point on
+    keyL = abs(keyL);
+    keyR = abs(keyR);
     
     // Stereo-link the detector signal?
     (lnkMix > 0) ?
     (
-      // If stereo-linked, take average of both channels
-      // at full volume, then scale to linking amount
-      linked = sqrt(sqr(keyL) + sqr(keyR)) * lnkMix;
+      // Take average of both key channels
+      linked = (abs(keyL) + abs(keyR)) * 0.5 * lnkMix;
+    //linked = sqrt(sqr(keyL) + sqr(keyR)) * lnkMix;
+      // |
+      // +--> Smarter method, but becomes too loud when linked
       
+      // Adjust mix volume of un-linked samples
       keyL *= splMix;
       keyR *= splMix;
       
+      // Add linked sample on top
       keyL += linked;
       keyR += linked;
     );
+    
+    // Write absolute values of the sidechain key samples to a buffer
+    bufferKey[L] = max(bufferKey[L]*falloff, abs(keyL));
+    bufferKey[R] = max(bufferKey[R]*falloff, abs(keyR));
+    //
+    // Check if the sidechain samples are clipping and store into a buffer
+    bufferClipKey[L] = max(bufferClipKey[L]*falloff, (bufferKey[L]>1));
+    bufferClipKey[R] = max(bufferClipKey[R]*falloff, (bufferKey[R]>1));
     
     // Run the comp calculations on whatever mixture
     // of the two input channels is left in the keys,
@@ -452,93 +881,97 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
     spl0 *= compL.compTick(keyL);
     spl1 *= compR.compTick(keyR);
     
+    // Write the gain reduction to buffers as absolute float gain factors
+    bufferGR[L] = abs(compL.GR);
+    bufferGR[R] = abs(compR.GR);
+    
     // Send the compressor gain reduction values to the
     // saturation envelope followers to slow them down.
     saturationL = satL.satTick(compL.GR);
     saturationR = satR.satTick(compR.GR);
-  );
-  
-  // Stereo channels with external key/sidechain
-  (routing == 1) ? 
+  )
+  : // MONO ROUTING MODES
   (
-    // Filter sidechain samples and make them positive
-    keyL = abs(filterL.eqTick(spl2));
-    keyR = abs(filterR.eqTick(spl3));
-    
-    // Stereo-link the detector signal?
-    lnkMix > 0 ?
+    // Mono L
+    // Ignores channel R input completely, only processes
+    // channel L and duplicates output to channel R
+    (routing == 2) ?
     (
-      // If stereo-linked, take average of both channels
-      linked = sqrt(sqr(keyL) + sqr(keyR)) * lnkMix;
-      
-      keyL *= splMix;
-      keyR *= splMix;
-      
-      keyL += linked;
-      keyR += linked;
+      dryL = dryR = spl0;
+      sampleInput = spl0 * gainIn; // Apply input gain
+      sampleKey   = sampleInput;
     );
+    //
+    // Mono R
+    // Ignores channel L input completely, only processes
+    // channel R and duplicates output to channel L
+    (routing == 3) ?
+    (
+      dryL = dryR = spl1;
+      sampleInput = spl1 * gainIn; // Apply input gain
+      sampleKey   = sampleInput;
+    );
+    //
+    // Mono L <- R
+    // Mono signal on channel L, mono key/sidechain on channel R
+    (routing == 4) ?
+    (
+      dryL = dryR = spl0;
+      sampleInput = spl0 * gainIn; // Apply input gain
+      sampleKey   = spl1 * gainIn; // Apply input gain
+    );
+    //
+    // Mono L -> R
+    // Mono signal on channel R, mono key/sidechain on channel L
+    (routing == 5) ?
+    (
+      dryL = dryR = spl1;
+      sampleInput = spl1 * gainIn; // Apply input gain
+      sampleKey   = spl0 * gainIn; // Apply input gain
+    );
+    
+    // Store dry samples in buffer for later dry/wet mixing
+    bufferInput[L] = max(bufferInput[L]*falloff, abs(dryL));
+    bufferInput[R] = bufferInput[L];
+    //
+    // Check if the input samples are clipping and store into a buffer
+    bufferClipInput[L] = max(bufferClipInput[L]*falloff, (bufferInput[L]>1));
+    bufferClipInput[R] = bufferClipInput[L];
+    
+    // Filter sidechain sample (if cutoff > 20 Hz)
+    // 
+    (scFreq > 20) ?
+    (
+      sampleKey = filterL.eqTick(sampleKey);
+    );
+    
+    // Make key signal absolute from this point on
+    sampleKey = abs(sampleKey);
+    
+    // Write absolute values of the sidechain key samples to a buffer
+    bufferKey[L] = max(bufferKey[L]*falloff, abs(sampleKey));
+    bufferKey[R] = bufferKey[L];
+    //
+    // Check if the sidechain samples are clipping and store into a buffer
+    bufferClipKey[L] = max(bufferClipKey[L]*falloff, (bufferKey[L]>1));
+    bufferClipKey[R] = bufferClipKey[L];
     
     // Run the comp calculations on whatever mixture
     // of the two input channels is left in the keys,
     // then apply the resulting GR to the signal.
-    spl0 *= compL.compTick(keyL);
-    spl1 *= compR.compTick(keyR);
+    sampleInput *= compL.compTick(sampleKey);
+    
+    // Write the gain reduction to buffers as absolute float gain factors
+    bufferGR[L] = abs(compL.GR);
+    bufferGR[R] = bufferGR[L];
+    
+    // Update the output samples with the current state
+    spl0 = spl1 = sampleInput;
     
     // Send the compressor gain reduction values to the
     // saturation envelope followers to slow them down.
-    saturationL = satL.satTick(compL.GR);
-    saturationR = satR.satTick(compR.GR);
+    saturationL = saturationR = satL.satTick(compL.GR);
   );
-  
-  // Mono L
-  // Ignores channel R input completely, only processes
-  // channel L and duplicates output to channel R
-  routing == 2 ?
-  (
-    // Process L channel and pass its result through
-    // to R channel
-    spl1 = spl0 *= compL.compTick(abs(filterL.eqTick(spl0)));
-    
-    // Calculate saturation drive from compressor Gain Reduction
-    saturationR = saturationL = satL.satTick(compL.GR);
-  );
-  
-  // Mono R
-  // Ignores channel L input completely, only processes
-  // channel R and duplicates output to channel L
-  routing == 3 ? 
-  (
-    // Process R channel and pass its result through
-    // to L channel 
-    spl0 = spl1 *= compR.compTick(abs(filterR.eqTick(spl1)));
-    
-    // Calculate saturation drive from compressor Gain Reduction
-    saturationL = saturationR = satR.satTick(compR.GR);
-  );
-  
-  // Mono L <- R
-  // Mono signal on channel L, mono key/sidechain on channel R
-  routing == 4 ?
-  (
-    // Process L input channel using R input as key.
-    // Duplicate result into output channel R.
-    spl1 = spl0 *= compL.compTick(abs(filterL.eqTick(spl1)));
-    
-    // Calculate saturation drive from compressor Gain Reduction
-    saturationR = saturationL = satL.satTick(compL.GR);
-  );
-  
-  // Mono L -> R
-  // Mono signal on channel R, mono key/sidechain on channel L
-  routing == 5 ? 
-  (
-    // Process R input channel using L input as key.
-    // Duplicate result into output channel L.
-    spl0 = spl1 *= compR.compTick(abs(filterR.eqTick(spl0)));
-    
-    // Calculate saturation drive from compressor Gain Reduction
-    saturationL = saturationR = satR.satTick(compR.GR);
-  );  
   
   // Saturation stage
   (saturation > 0) ?
@@ -566,9 +999,17 @@ slider16:routing=0<0, 3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),
   // - 0.5:  50% dry + 50% wet
   // - 1.0: 100% wet
   //
-  wetDry < 1 ?
+  (wetDry < 1) ?
   (
     spl0 = dryWet * dryL + wetDry * spl0;
     spl1 = dryWet * dryR + wetDry * spl1;
   );
   
+  // Write absolute values of the output samples to a buffer
+  bufferOutput[L] = max(bufferOutput[L]*falloff, abs(spl0));
+  bufferOutput[R] = max(bufferOutput[R]*falloff, abs(spl1));
+  //
+  // Check if the output samples are clipping and store into a buffer
+  bufferClipOutput[L] = max(bufferClipOutput[L]*falloff, (bufferOutput[L]>1));
+  bufferClipOutput[R] = max(bufferClipOutput[R]*falloff, (bufferOutput[R]>1));
+ 
