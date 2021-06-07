@@ -61,19 +61,21 @@ slider10:invertR=0<0,1,1{Normal,Flipped}> Flip Polarity R
 slider11:outRouting=0<0,3,1{Stereo,Mono (left),Mono (right),Mono (summed)}> Output Channels
 slider12:blockDC=1<0,1,1{Disabled,Enabled}> DC Blocker
 
-in_pin:left input
-in_pin:right input
+// This is a generator and doesn't need input monitoring
 out_pin:left output
 out_pin:right output
 
 @init
   
+  // Stop Reaper from re-initializing the plugin every time playback is reset
+  ext_noinit = 1;
+  
   // Used for oscillator phase calculations
-  twoPi      = 6.2831853072;
+  twoPi      = 6.28318530717958647692528676656;
   
   // Oscillator center frequency, default to
   // 1 kHz @ 44.1 kHz in case something goes wrong.
-  oscFreq    = 0.02267573696;
+  oscFreq    = 0.02267573696145124716553;
   
   // Parameter value containers
   oscType    = 1000;
@@ -321,3 +323,4 @@ out_pin:right output
     spl0 = dcBlocker(0);
     spl1 = dcBlocker(1);
   );
+ 
