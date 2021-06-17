@@ -1,0 +1,69 @@
+// DC Filter
+// 
+// Multi-channel capable and extremely narrow DC offset removal filter.
+// 
+// Why would you need another DC filter plugin, if Reaper already comes with one?
+// Simple: the DC Filter JSFX that comes with Reaper has a wider filter (meaning
+// it removes more sub low-end) and it only operates on two channels, so it's of
+// little use when processing multi-channel material.
+//
+// This DC filter is as narrow as makes sense, and it keeps sub-bass frequencies
+// as untouched as possible. The processing automatically adapts to the count of
+// channels of the track it operates on, even if the channel count should change.
+// 
+// author: chokehold
+// url:    https://github.com/chkhld/jsfx/
+// tags:   utility dc offset filter blocker
+//
+desc:DC Filter
+
+// Metering is not really required here
+options:no_meter
+
+// By not having in_pin and out_pin assignments, this plugin is able to adapt to
+// the number of channels on its track automatically.
+
+@init // -----------------------------------------------------------------------
+  
+  // Stop Reaper from re-initializing the plugin every time playback is reset as
+  // it could mess up the state buffers and cause DC to pass during operation.
+  ext_noinit = 1;
+  
+  // DC REMOVAL FILTER ---------------------------------------------------------
+  //
+  // Removes 0 Hz content that would offset the signal to one polarity.
+  //
+  // The previousAddress argument needs to point to the memory address where the
+  // previous state value is buffered. Needed for simple multi-channel operation.
+  //
+  // Implemented after Sam Koblenski:
+  // https://sam-koblenski.blogspot.com/2015/11/everyday-dsp-for-programmers-dc-and.html
+  // Modified "alpha" value from 0.9 for narrower filtering.
+  // 
+  function dcFilter (sample, previousAddress) local (previous, filtered)
+  (
+    previous = previousAddress[0]; // Bracket addressing is slow, saving time
+    sample  += previous * 0.99988487;
+    filtered = sample - previous;
+    previousAddress[0] = sample; // Can't avoid brack addressing here
+    filtered;
+  );
+  
+  // Memory buffer to store previous states of the DC filters
+  dcBuffer = 1000;
+
+@sample // ---------------------------------------------------------------------
+  
+  // Start at channel 0
+  channel = 0;
+  
+  // Cycle through all channels on this track
+  while (channel < num_ch)
+  (
+    // Replace this channel's sample by a DC filtered version of itself
+    spl(channel) = dcFilter(spl(channel), dcBuffer[channel]);
+    
+    // Advance to the sample on the next channel
+    channel += 1;
+  );
+  
