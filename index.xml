@@ -1,0 +1,856 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1" name="chokehold JSFX" commit="f7533b7f004d37953f24bc742d6e58e7dc967f73">
+  <category name="Clipper">
+    <reapack name="hard_clipper.jsfx" type="effect" desc="Hard Clipper">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Hard Clipper\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Simple hard clipping that will rigorously "chop off" any signal peaks that shoot above the set ceiling.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This clipper has hardcoded (but optional) 4x oversampling so it should not cause a very hefty CPU hit while active. It doesn't "save" the signal, just makes things a little smoother, but it comes at the cost of losing true 0 dBfs peak safety from all the filtering. If you need reliable 0 dBfs peak safety, then load another clipper after this, or just simply disable oversampling.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Since hard clipping causes lots of aliasing, I've added a DC Blocker, can't hurt to have it ready, just in case.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/hard_clipper.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Clipper/hard_clipper.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="knee_clipper.jsfx" type="effect" desc="Knee Clipper">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Knee Clipper\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A clipper neither purely hard nor purely soft, and yet a unification of both.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Hard clippers are usually lamented about as producing digital, cold and nasty sound. But they are perfect for very short overs, as they will not affect the signal in any way before overs actually happen, and only those occuring overs will be clipped, nothing else. You can get away with lots of hard clipping on percussive and transient-rich material like drums. For more consistent things like a bass track or a full mix, hard clipping is not ideal as it tends to be either completely transparent or descend into a wild aliasing mess instantly.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Soft clippers are usually touted as tube-like distortion that produces a warm and desirable saturation. In contrast to hard clippers, soft clippers tend to be based on sigmoid functions which already affect the signal from the moment it's no longer silence, so even at very low input volumes the distortion will already set in and introduce harmonics. As signal levels increase, distortion amounts will also increase significantly. Not only will this blanket a signal with a soft and buzzy layer of harmonic fur, but it also smooths out any nice transients, and shifts the weight of sub bass frequencies higher into the mid range, this becomes more obvious as more overs are clipped and eliminates the impact of a kick drum easily. But less percussive and more consistent signals like voices or bass tracks may benefit if applied appropriately. This type of clipping will usually result in output quieter than hard clipping, and to get similar RMS levels it's necessary to apply more gain - which again means more distortion of quieter signal parts, and yet more fluffy killer blanket buzz.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The process this clipper uses unites the benefits of both clipping types, but only develops their disadvantageous characteristics at quite extreme settings. This is achieved by using a so-called "knee" before the hard clipping stage.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 While the knee is set to 0 dB, this is just a standard hard clipper, like all the other hard clippers out there. As soon as a knee value above 0 dB is set, two thresholds are created around the ceiling level, one below it, one above. Each threshold is 1/2 the knee dB away from the ceiling, this creates a "soft zone" around the ceiling with a start-to-end range of the set knee dB.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 No clipping occurs before the signal crosses the lower threshold of the knee, which makes this clipper transparent like a hard clipper at first.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Any signal within the lower and upper knee threshold range is gently rescaled to fit below the ceiling, even if the signal originally shot past the ceiling, within the confines of the [ceiling,upper knee threshold] range. This imparts a little bit of soft clipping saturation, and preverves the life in very loud transients significantly better than other, more trivial clipping methods.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The "super soft" option decides how the part of the signal within the knee is rescaled. With the "super soft" option disabled, the rescaling is more linear which means the transition into hard clipping occurs later but faster, so the signal can become slightly louder before the hard distortion kicks in, but at the cost of being harsher and much more immediate. With "super soft" enabled, rescaling inside the knee uses cosine interpolation to transition between the unclipped and clipped states more gradually. This sounds less harsh but comes at the cost of some output volume.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Any signal exceeding the upper threshold of the knee will just be chopped off by a regular hard clipper.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The result of this is a very clean signal for the most part, with only little "soft clipping buzz" and amazingly snappy transients. All without sacrificing as much of the signal's clarity as with the other methods.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The shape of loud and fast transients will be squeezed but preserved, and the amount of distortion from actually cutting out overs is reduced to a minimum. The transition from clean to distorted is incredibly smooth and forgiving.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The lower the knee dB value is set, the cleaner the signal will be as long as no clipping occurs, but the increased hard clipping will sound harsh. Setting a higher knee dB value starts saturating the signal earlier, but reduces hard clipping harshness and makes loud signal parts sound less distorted.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you think clipping your mix any more would only make it worse, bypass your clipper and give this one a try. ;)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 In the metering section, the ceiling is displayed as a red line while no knee is set. Anything above the red line will be hard-clipped. As soon as there is a knee present, the ceiling turns orange, because it now no longer represents the point of hard clipping. With knee enabled, the yellow marker line left of the ceiling line visualizes the onset of the knee. Signal exceeding that line is gently compacted until it hits the upper limit of the knee range, which is displayed as the red marker line to the right of the ceiling. Anything beyond the red line will be hard-clipped, even with the knee, even with "super soft" mode enabled.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The green bar in the metering section reflects the incoming audio signal of a plugin input channel. The blue bar underneath it reflects the outgoing signal of its related plugin output channel. As long the bars are just green or blue, the signal is still as pure as it ever was, and in no way clipped or filtered or otherwise affected. When the green bar turns yellow the signal has entered the knee range, so the clipper is starting to softly compact its levels. From hereon, soft saturation will increasingly be introduced. When one of the bars (green or yellow, depending on knee amount) turns red, it means the signal is beyond the compactable range and has to be hard-clipped. Anything that is red has gone for good. (This doesn't have to be bad, though. So don't let it stop you from pushing it some more.)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The effect of the Boost slider is reflected in the metering section, since it directly affects how the clipping stage is driven. Changes to the Trim slider however are NOT reflected in the metering, primarily because it has no effect on the clipping stage, but also since it would make the display unnecessarily complex or confusing. Nothing above the ceiling leaves this plugin. And there are always level meters on its sides. :)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Last but not least - this supports multi-channel audio. I/O and metering will automatically adjust to the number of channels the track you slam this on has.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/knee_clipper.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Clipper/knee_clipper.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="sine_clipper.jsfx" type="effect" desc="Sine Clipper">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Sine Clipper\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Clipper that uses the smoothness of the sine wave to tame loud signal peaks.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 In floating point audio, the sample values -1.0 and +1.0 are "as loud as it could possibly be". A sample value beyond -1.0 or +1.0 would overdrive your D/A converter and lead to distortion. A value of 0.0 means total silence.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The usual way to clip a signal is to either hard-restrict it into the range between -1 and +1, i.e. "clip" every louder sample to the -1/+1 maximum, or to apply something like a sigmoid function to it, that gradually attenuates the input, thereby also restricting sample values to inside the -1/+1 range.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 But hard clipping causes nasty and harsh harmonics, and soft clipping tends to sound buzzy and quieten the signal. This clipper makes use of both those principles, but with a twist that makes it much better.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The sine function is not a sigmoid, so its output will not keep approaching the -1/+1 limit without ever reaching it. At 1/2\u960 ?\u160 ?the sine function outputs exactly 1.0, also for negative polarity. The value of 1/2\u960 ? is ~1.5708 which as a sample value is roughly +3.922 dBfs, that's well above the 0 dBfs mark. In other words: the sine function can soft-clip very loud signals down from +3.922 dBfs to 0 dBfs -- that is, as long as the incoming samples are below that magic 1/2\u960 ? value.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 After the magical 1/2\u960 ? point, the output of the sine function will start to gradually approach 0 again, which is of little use for clipping, because it means louder samples don't just get restricted to the -1/+1 limit, but they create quieter output the louder they become. So something needs to be done to stop this from happening.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 And that's what this clipper does. Samples values outside [-1/2\u960 ?,+1/2\u960 ?] are just hard-clipped, everything else inside is soft-clipped using the sine.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Or to put it into real-world relation by throwing them numbers around again: signal levels of up to ~ +3.922 dBfs (well above 0 dBfs) will NOT merely be brutishly hard-clipped, instead they are shaped and stay hard-clipping-free. So the incoming signal could be nearly +4 dBfs above the point at which the level meters usually start freaking out - and there still won't be any hard clipping, also no overs on your track.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A great thing about the sine function is that its output values stay closer to the input value, especially at larger values, than many other comparable functions like e.g. the beloved hyperbolic tangent or arctangent. Therefore it introduces way less distortion harmonics while letting more of the input signal survive, and there's much less attenuation in the lower volumes than those aforementioned sigmoids tend to cause. The transition into distortion also happens noticeably smoother.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 TL;DR: More headroom, louder signal, fewer artifacts, softer clipping onset, less "buzz". There's no reason to keep using regular sigmoid-based clippers anymore like a basic boomer. ;)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/sine_clipper.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Clipper/sine_clipper.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="soft_clipper.jsfx" type="effect" desc="Soft Clipper">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Soft Clipper\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Based on hyperbolic tangent clipping, it's what some would sell you as gentle tube distortion with warm harmonics. :)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The basic idea is to have it both ways round: you can boost a signal into the ceiling, or lower the ceiling onto the signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Either way, the closer the signal approaches the ceiling, the more it will be pushed down and squashed. The signal will not reach 0 dBfs (*) however hard you push it. This is an instant effect, so there are no attack or release times.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Since saturation and soft-clipping can introduce a DC offset, there's an optional DC blocker included that can filter 0 Hz frequency content.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Saturation and soft-clipping can also introduce evil aliasing, that's when newly generated harmonics are so high in frequency that they shoot past 22 kHz and could not possibly be handled anymore by the samplerate, so they "fold back" into the lower part of the frequency spectrum where they can cause havoc and destruction by becoming audible, sitting in unharmonic spaces and even cancelling out signal that you actually want to hear.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 To battle this, I've built in a crude oversampling mechanism. Pick an oversampling factor and a filtering intensity, that's it. Bear in mind that oversampling adds new samples that were not part of the signal before, so your CPU will have to munch through exponentially more samples than without oversampling. Higher oversampling amount = higher CPU load.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Processing more samples also means that the filtering that is so essential to oversampling has to run through more samples, which means that even the "relaxed" filtering intensity could become quite heavy to handle at very high oversampling rates on older or weaker machines.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The trick is to find a balance between the oversampling ratio and the filtering. Checking with just a sine wave, a ratio of 8x and "normal" or "heavy" filtering would take care of just about any aliasing here in my test setup. But obviously, real music is immensely more complex than a mere sine wave, so you might find that higher ratios or intensities work better in your specific case/s, or that you can maybe get away with far lower settings than me.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 (*) While the idea of a clipper is to, well, clip the tops off a signal at a fixed ceiling, unfortunately filtering will inherently come with an undesirable side-effect: it screws with the volume. So if you activate oversampling or the DC blocker, there will be no 0 dBfs ceiling "and not higher" guarantee anymore, i.e. a hot signal may still shoot above 0 dBfs.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 To counter this, set the ceiling level low, so you hardly ever see any spikes over 0 dBfs, then activate the hard clipper. As the hard clipper is NOT oversampled, and located behind all of the filters, it will always guarantee true 0 dBfs peak safety.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 However, it will also cause nasty aliasing and pretty quickly, so make sure you don't boost into it too much. Unless you want to, in that case go right ahead and knock yourself out. :)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/soft_clipper.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Clipper/soft_clipper.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Distortion">
+    <reapack name="foldback_distortion.jsfx" type="effect" desc="Foldback Distortion">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Foldback Distortion\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 When the signal reaches the set ceiling or 0, it will be "folded" into the opposite direction. Which means values (ceiling + overshoot) will become (ceiling - overshoot).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This will continue folding between ceiling and 0 until no more overshoot is found, so it will grow rather CPU demanding with increasing amounts of folds/distortion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This is not oversampled, i.e. it will create aliasing. I tried adding oversampling to this, and all that happened was that the distorted waveforms lost the new harmonics and with every additional oversampling step, the output gradually went back to its original form. So, kinda meh.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 But I added a DC blocker in, with all the aliasing can't really hurt to have that around.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/foldback_distortion.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Distortion/foldback_distortion.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Dynamics">
+    <reapack name="bus_comp.jsfx" type="effect" desc="Bus Compressor">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Bus Compressor\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A compressor primarily intended for signal densification, just to avoid the word "glue". Use this wherever several different signal sources meet and are combined into a single bus.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Input gain allows "boosting" the signal into the compressor, this helps to bring background signals up, "make cymbals breathe" etc.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Threshold, Ratio, Attack and Release settings are pretty much as in any other compressor as well. If the Release is set to Auto, the compressor will use a second release envelope, which helps to keep a signal stable over long periods of time, but still lets it "live" over shorter periods of time.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If the Sidechain is switched to External, the compressor will use inputs 3+4 as the Left and Right key signals. There's a high pass filter that lets the detector circuit focus on higher frequencies to avoid pumping from kick drums and bass where not desired.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The channel routing switches between stereo and Mid/Side mode. In stereo mode, the L channel is processed as the L channel, and the R channel is processed as the R channel. In Mid/Side setting, the L+R channels will be converted into M+S channels. M channel holds the mid/center information of the signal, e.g. kick/snare/vocals, and S channel holds the side/stereo information, e.g. guitars and drum overheads. So in Mid/Side mode, the left sample holds center information and the right sample holds the stereo information. In M+S mode, the stereo field can appear "widened", depending on how much each channel is compressed.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 With stereo linking disabled, both L+R channels will be processed individually. Fading in stereo linking will make the detector act on a mix of the L+R channels increasingly. If you have incoherent signals (e.g. two separate guitars) on both channels, you'll most likely not want any stereo linking. Coherent signals, e.g. drums, will need stereo linking or their stereo image will suffer badly.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 NOTE: if stereo liking is set to 100%, there won't be an audible difference between L+R and M+S mode.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Instability will add a bit of low-level noise to the signal, both the audible path as well as the detector path. The noise is auto- blanked, meaning it won't hiss in quieter sections of the project. It is very quiet (~ -89 dBfs RMS), so you probably won't be able to hear it. But it adds different inconsistencies to every signal path, audible + key/sidechain, like real-world analog devices do. This results in ever so gentle "errors" in the compression, plus it imparts an esoterically slight "graininess" onto the material.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The saturation circuit is gain-reduction dependent, so the harder the compressor squashes the signal, the more soft saturation will be introduced into the material.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Hard 0 dBfs output clipping may be enabled if so desired, but may be a bit harsh and buzzy sounding. Use the Makeup gain to "boost" the material into this, or don't.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Finally, Dry/wet mix fades between the unprocessed and processed signals, this is also known as parallel or New York compression.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/bus_comp.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Dynamics/bus_comp.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="consolidator.jsfx" type="effect" desc="Consolidator">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Consolidator\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The idea is simple: boost a dynamic signal into this processor at ridiculous amounts of gain, compensate with the makeup gain, turn the mix knob down.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This is a set of 3 compressors chained in a row, each with its own character. The compressor thresholds are adjusted in relation to increasing input boost, so don't be afraid to turn up that boost. Things will become louder at first but don't be scared, keep pushing that input boost for some serious squash.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The sidechain high pass filter is applied to every compressor stage. This is only a sidechain filter that processes the key signal, it will not alter the program material path.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Stereo linking is calculated at each compressor stage independently. Linking L+R channels in the detector makes the stereo image more stable, but it robs the compressors of possible gain reduction. Rule of thumb: to squash signals as much as possible ("maximize"), use low or no stereo linking. To help keep a signal's stereo field intact, use high or full stereo linking.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Makeup gain is just a simple volume adjustment. Don't get scared when things get loud, just bring down the makeup gain in the end.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The dry/wet parameter mixes the unprocessed input signal with the output. If things get too squashy and flattened for your liking, just turn down the wet amount and mix in some of the dry signal. Instant parallel/NY compression.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/consolidator.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Dynamics/consolidator.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="gate_expander.jsfx" type="effect" desc="Gate/Expander">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Gate/Expander\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A combined noise gate and expander. Both are actually quite the same, with the main difference that when a gate closes, it closes all the way to silence - but expanders only close down to certain level. A gate is like an extreme flavour of expander, and an expander is like a soft type of nosie gate.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Why do you need both, and when would you use which? Simple.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Things like distorted electric guitars may need to get rid of some hissing, and having any remainder of the hiss still in your signal won't be of any profit, so it's a clear vote for the gate that fades all the way to silence.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Things like acoustic drum kits live and breathe through the combination of all their various microphone recordings. All of those microphones will have recorded "bleed" from other kit pieces in the room, e.g. there will be cymbal noise on the kick and vice versa. Rigorously cutting away everything from every track that wasn't intended to be ther will make the combined mix of those tracks sound artificial and void of any life, and it will throw your mix out of balance. It just doesn't feel natural if everything is super clean and trimmed, and suddenly there's a hit on the tom that sets a few gates off that shouldn't have been set off, and right then is when your entire panorama mix and equalization are done for. So in such cases, it may be more desirable to not let the attenuation happen down to full silence, but rather only for a limited range. So if many microphones are active at the same time, your mix won't fall out of proportion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Needless to say: the Exp. Range parameter will only work if the plugin is in expander mode, it has no effect in a gate.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Hysteresis is something like a little grace period when the gate/expander is about to close. Instead of stubbornly insisting on shutting the volume down becaue the signal has just fallen below the magic threshold, the Hysteresis will let the signal fall just a few more dB below the threshold before the release envelope is triggered. This can be very useful for transient-rich material which may be quite loud at first, but then immediately loses its energy. Having a Hysteresis set will still require the transient to go past the defined threshold to open the gate/expander, but when the signal falls again, the gate/expander will stay open a little bit longer to let non-transient signal also pass.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A quick word on the channel configurations:\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Stereo (internal SC) Regular stereo/dual mono routing, the incoming audio is also the key signal and "gates itself".\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Stereo (external SC) Stereo/dual mono routing, but only signal coming through plugin channels 3+4 will be used as the key source that triggers the gate/expander envelope.\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Mono (L) amd Mono (R) Will route the selected input channel to all outputs, the incoming signal will be used to "gate itself".\par}
+{\pard \ql \f0 \sa180 \li360 \fi-360 \bullet \tx360\tab Mono (signal L / key R) and Mono (key L / signal R) Similar to the previous, only the channel marked with "signal" will be routed to both outputs, and the other channel marked as "key" will be used as the triggering key signal to gate it.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The stereo linking features is only active in the first two routing options, i.e. Stereo with internal/external SC. It uses "louder channel" priorization, so whichever channel is louder will open/close the gate/expander for both channels.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Just for fun, I added a primitive high-pass filter into the sidechain. This will be applied to any key input, internal external, stereo, mono. Any side-chain input sample will be filtered.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/gate_expander.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Dynamics/gate_expander.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="track_comp.jsfx" type="effect" desc="Track Compressor">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Track Compressor\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Flexible compressor with very low CPU footprint.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The idea was to make everything I care about in a compressor available in one plugin.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It can switch between internal and external key/"sidechain" signals that go into the detector. There are stereo setups as well as mono modes, two of them are designed to receive the actual signal on one channel and the key signal on the opposite channel.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The detector mode can be faded between feed-forward (modern) and feed-back (classic). FF at 0% will calculate a gain reduction factor for each sample independently. FB at 100% lets previous GR from the former sample/s flow into new samples' GR. This makes the overall behaviour of the compressor more stable and predictable, but also slower to respond to fast/large changes.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 There'e an RMS averager that will calculate the average sample value over a settable window of time. Setting it to 0 ms window will make the compressor respond to each peak sample directly. Similar to feedback topology, an increased RMS window will make the behaviour more predictable and stable, but a smaller/no RMS window catches faster transients and attenuates more quickly.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The "knee" refers to the point at which the compressor kicks in and starts compressing. "Hard knee" means zero compression happens up to a certain point, and as soon as that point is hit, the compression immediately kicks in at full amount. "Soft knee" means the ratio of compression will start already below the set threshold at a low ratio amount, and increases gradually above the cutoff point to reach its full ratio. This makes the transfer curve of the compression look like a round curve rather than a hard fold, hence "soft" knee.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A hard knee can be considered modern, digital, maybe a bit brutish, since it does nothing until required, and then suddenly kicks in at full ratio. A soft knee can be considered maybe more analog and vintage, due to the variable ratio and the slightly (perceived) imprecise triggering that already starts below the set threshold mark.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Range parameter controls the maximum amount of gain reduction to apply. If this is set to -40 dB, the range parameter is considered "off" and the full Gain Reduction range of up to -400 dB of Gain Reduction will be applied if need be. If this is set lower than -40 dB then only the specified gain reduction amount between 0 and -40 dB will be applied.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Stereo linking uses the averaged value of both sidechain (internal or external) channels for reference. At 0% there is no stereo linking, which means the compressor operates in dual mono mode, this is good to get two independent signals levelled. At 100%, there is total linking, which means that both key signals will evenly feed into the detector, so the signal will be compressed equally on both channels. This is good for things like grouped drums with several kit elements spanning the entire stereo field.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 There's a sidechain HP filter that will cut the lows off the detector signal, this is useful to make the compressor respond less to bass-heavy signal parts like kick drums or distorted guitar palm mutes and helps reduce pumping. If it's set to 20 Hz, it's in bypass. To have it filter the key signal, turn it up to somewhere above 20 Hz.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Automatic Makeup Gain compensation will factor in an amount of post-compression gain increase. The intention of this is to bring the volume of a signal that was attenuated with compression back up to somewhere around where it used to be. This is done with a static formula, so there can be settings where it results in output either a lot louder or well quieter than the input signal was, so it is not reliable, be careful. (This is genrally the case, not just in mine.)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The saturation is dynamic and depends on the amount of gain reduction that is applied for each compressor tick. So the more the signal is attenuated by the compressor, the higher saturation coloration will be.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Finally, the Dry/Wet mix defines the balance of uncompressed and compressed signal. Blending happens 100/0 - 50/50 - 0/100, so at the extreme values the signal will either be 100% dry (0%) or 100% wet (100%). In between, there will be a mixture of both the unprocessed input and the processed output.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/track_compressor.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Dynamics/track_comp.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Equalizer">
+    <reapack name="eq_560.jsfx" type="effect" desc="EQ 560">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 EQ 560\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Classic American 10-band graphic console equalizer. Limited flexibility, fast and streamlined workflow.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Applies 2x oversampling for accurate high frequency filter curves. Adds some "analog character" on top, but auto-blanks and auto-bypasses the processing as not to litter a mix with noise floor on idle tracks and to save some CPU cycles with no signal present.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/eq_560.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Equalizer/eq_560.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Filter">
+    <reapack name="dc_filter.jsfx" type="effect" desc="DC Filter">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 DC Filter\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Multi-channel capable and extremely narrow DC offset removal filter.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Why would you need another DC filter plugin, if Reaper already comes with one? Simple: the DC Filter JSFX that comes with Reaper has a wider filter (meaning it removes more sub low-end) and it only operates on two channels, so it's of little use when processing multi-channel material.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This DC filter is as narrow as makes sense, and it keeps sub-bass frequencies as untouched as possible. The processing automatically adapts to the count of channels of the track it operates on, even if the channel count should change.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/dc_filter.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Filter/dc_filter.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="FX">
+    <reapack name="filthy_delay.jsfx" type="effect" desc="Filthy Delay">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Filthy Delay\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Fun little delay with multiple routings, plus optional filters and boostable saturation in the feedback path.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Three signal routing modes: Stereo: the delay tap happens where the signal happened Inverted: the delay happens on the opposite side of the signal Ping-pong: the delay reflects back and forth between both sides\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The tap time defines the time that passes between the input signal and the first delay repetition. The maximum tap time is 3 seconds.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The feedback percentage controls how loud the repetition is played back. The higher the feedback percentage is set, the longer is the tail of delay taps. The lower the feedback value is, the faster is the decay to silence of the delay taps.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The feedback path has one highpass and one lowpass filter, both of them will be applied to each feedback tap. If the feedback quality is set to "Filthy", the filters will become slightly more resonant at their cutoff points.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If the feedback quality is set to Clean, only filtering is applied, otherwise the delay taps stay untouched. Switch the quality to the Filthy setting to enable saturation and drive for feedback taps.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Filthy Drive parameter sets the amount of gain with which taps in the feedback path are boosted into the saturation function. The drive will make the signal louder before saturation and then lower its volume again afterwards, this is done to not let the saturator escalate the feedback path too much.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The mix amount of dry (unprocessed) and wet (processed) signal can be set independently. The wet path contains only the delayed taps, it does not contain the original signal at its original time.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Not much more to say about this. Have fun!\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/filthy_delay.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/FX/filthy_delay.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="ring_mod.jsfx" type="effect" desc="Ring Mod">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Ring Mod\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 In simple terms, this multiplies the input signal with a carrier signal, which can lead to all sorts of warbly modulation and distortion effects.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The carrier signal can be selected from a number of trivial oscillators, or it can be set to use the input signal itself for ultimate modception.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Frequency selection uses two sliders: the first slider sets the base in Kilohertz, the second slider sets the offset from the base in Hertz. To use e.g. 1250 Hz as the carrier's frequency, use any combination of kHz and Hz, for example kHz at 1.0 and Hz at 250.0, or set e.g. kHz to 0.75 and the Hz slider to 500.0. Either will sum to the 1250 Hz target.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If the "self" carrier is picked, the two Frequency sliders are not used.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Bias slider will add a static offset to the carrier signal and push its polarity towards fully positive or negative.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Turning up the Instability slider will introduce non-linearities to the carrier signal's frequency and the feedback path. The carrier frequency will become unstable and deviate up and down from the set value. Slight noise addition will make the feedback path a little more random.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Feedback slider defines how much of the previously processed signal (input * carrier) bleeds back into the input stage of the process.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Turn up the Drive slider to add sweet saturation to the carrier signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Use the Mix slider to find the perfect balance between the unprocessed dry input and the processed wet output signal. With the Mix slider set to 0.0, the processing is bypassed to save CPU.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Trim slider is a simple output gain stage, use it for compensation when the process makes things very loud or quiet. Even with processing bypassed (Mix at 0.0), the output trim gain will still be applied.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/ring_mod.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/FX/ring_mod.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Generator">
+    <reapack name="test_signals.jsfx" type="effect" desc="Test Signals">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Test Signals\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A collection of things that make noises.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 I needed a suite of tools that help me examine plugins and hardware devices, so I made one. The output from this plugin is added on top of the input signal, so it's possible to chain several in a row.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 There are 14 possible signals that can be generated on each channel individually: silence, sine, rising or falling saw, triangle, three pulse widths (50% creates a rectangular wave), noise colours white, pink and purple, digital noise (random -1/0/+1 samples), as well as positive and negative DC offset.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Output Channels setting allows not just regular stereo signals, but also two L/R-only mono modes. The idea was to let two different signals run, and have the possibility to quickly switch them.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Because having just one wide-range slider to set the frequency will give essentially zero resolution below ~1000 Hz, and too fine steps above ~1000 Hz, I decided to make the frequency setting easier, but maybe not immediately understandable.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 You set a base frequency first, then you increase the multiplier to multiply (Base Hz x Multiplier) which will be the actual frequency.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Example: Base 10 Hz x Multiplier 10 = 100 Hz Base 100 Hz x Multiplier 4.4 = 440 Hz Base 100 Hz x Multiplier 10 = 1000 Hz\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Volume L+R slider changes the levels of both L+R channelsby the the same amount. The L/R Offset sliders will change volume for each channel individually.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Flipping a channel's polarity is also often called inverting phase, or rotating the phase by 180\u176 ?. Having the same generator and volume both channels and flipping the polarity while the L+R Summed output mode is selected will result in silence from phase cancellation.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The generators are trivial i.e. not band-limited or oversampled, so some of them (or their combinations) could cause DC offset. I added an optional DC blocker just before the output to remove this again.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/test_signals.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Generator/test_signals.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Instrument FX">
+    <reapack name="amp_sim.jsfx" type="effect" desc="Amp Sim">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Amp Sim\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Put this on your guitar or bass DI tracks, or play into it live.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Does not come with a built-in cabinet, so you'll likely want to insert an IR loader (like my Cabinet Sim JSFX) after it.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Lets you pick your desired level of oversampling and filtering intensity. Higher oversampling factors and heavier filters will be more demanding on your CPU, but may help to clean up the top end of the signal and avoid nasty aliasing artefacts.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 NOTE: to save CPU, only the filtering and distortion stages are oversampled. I opted for latency-free IIR based oversampling so it will be heavy enough on CPU as it currently is. I didn't see any need to oversample the dynamics sections.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The gate can be switched to work in three ways. Input/"pre" has the gate between your guitar and the amp input like an FX pedal. Output/"post" is like having the gate in the FX loop, after the distortion stages. The third mode, Triggered, runs the detector of the gate at the input "pedal" stage, but operates behind the amp, at the "FX loop" stage, after filtering and distortion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 I don't want to call it a Tube Screamer, but the pedal boost is somewhat inspired by it. Cuts away some nasty frequencies, adds some grit and gives your signal a nice little push into the amp.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The level of input gain will slightly affect what happens later in the amp, the EQ stages will directly affect the image of its distortion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Depth can add some very low-end thump, Presence will add lively top-end sparkle. Both will respond to the incoming signal level, which can create a very dynamic experience - if correctly dosed.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The maximizer section is a gnarly compressor that adds movement or squashes your signal into a sausage. Use sparingly but don't be afraid of it.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/amp_sim.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Instrument%20FX/amp_sim.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="bass_squeezer.jsfx" type="effect" desc="Bass Squeezer">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Bass Squeezer\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Split-band compression and filtered distortion for that instant bathtub bass.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It's a relatively simple thing, really. You throw this on a bass track, DI or amped, and observe what happens. Instantly pushes the lows up to blow out the subwoofer, cuts out the annoying lower mids, and distorts the high end to let it pierce through the rest of your mix.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If one of the Mono input routings is selected, only one channel is processed, which leads to less CPU munch than stereo mode, which processes two channels.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Split Low setting defines the frequency at which the filter separates the low end from the rest. The Split High slider defines the cutoff frequency for the filter that separates the high end from the rest. If both sliders are NOT set to the same cutoff frequency, which will usually be the case, all content between the two filter cutoffs will be rejected, essentially creating a notch filter for the low mids of variable bandwidth, depending on the two cutoffs.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Turning up the Squeeze Lows slider will compress the low end harder.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Turning up the Squeeze Highs slider compresses and distorts the high band. It will also lower a high-cut filter that narrows the high band down towards the Split Low cutoff to focus and pronounce the distortion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The default setting should give you a good starting point. Try changing Split High first, and see if lowering or raising it sits better around your bass-es high end. If you want more high buzz, increase High Trim. If the distortion's really scratchy and nasty, lower High Trim until it's acceptable. It's always possible to compensate volume balance differences with the Low Trim/High Trim sliders.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/bass_squeezer.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Instrument%20FX/bass_squeezer.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="cabinet_sim.jsfx" type="effect" desc="Cabinet Sim">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Guitar & Bass Cabinet Sim\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Place this after an amp simulation of your choice that doesn't already come with its own cabinet simulation, or that possibly doesn't sound the way you want.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If your amp sim does have a cabinet section, then make sure you disable its own cab before you load this one.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 There are four guitar focused 4x12 responses, and also one 8x10 bass focused response. The names of these IRs hint to the origins of the captured cabinets.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Conveniently, this will not load IRs from your drives, so there's only one file to worry about, no add-ons.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Inconveniently, this also means you can not load custom IR wave files from your drive into this plugin, so what comes with this plugin is all there is.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Lowering the FFT size will likely make things sound bad, but light on CPU. Raising the FFT size will sound great, at the price of a much higher CPU load.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The convolution core of this processor is based on code by Tale, modified and extended by me. You can find the original snippet in this helpful Reper forums thread: https://forums.cockos.com/showthread.php?p=1786069\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/cabinet_sim.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Instrument%20FX/cabinet_sim.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="chug_thug.jsfx" type="effect" desc="Chug Thug">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Chug Thug\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Electric guitars like to build up a lot of (unnecessary) low frequency energy when playing palm mutes, especially if larger amounts of drive and distortion are involved. If you EQ the low frequencies out, guitars will sound thin when played normally. If you don't EQ the low frequencies out, the guitars develop an unflattering low-end boost when playing palm mutes, which subdues the rest of the mix and probably wreaks havoc in any compressor or limiter further up.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 An age-old trick, I believe it was introduced to the community by Andy Sneap, is to take a multi-band compressor, bypass all the upper bands, and then just use the lowest band to tame the low frequencies whenever they become too bad.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This is all good and well, but I don't feel like always loading up a hog of a multi-band processor, only to not-use most of it. There must be simpler tools for such a simple task. But since I didn't find any that were both simple and streamlined enough for my expectations, I decided to roll my own.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It's as simple as it can be: use the Crossover slider to set a filter cutoff, everything above that cutoff will be left alone, everything below it will be processed. Then turn the Amount slider up or down, and see what happens.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The higher the Amount is set, the harder the low end will be driven into the compression, this should make it a lot more stable - but probably also quiet. As the Amount slider doesn't affect compressor characteristics like ratio or threshold, try using the Input slider to boost the incoming signal or to pad it a bit, this can change the entire way the processing responds. Generally, the idea is to not have the plugin do anything for most of the time, and let it work only when the low end is about to race through the top from chugs.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Use the Balance slider to, well, balance the low and high bands against each other. At 0.5, both bands stay at the normal level. Below 0.5, the high band is continuously rolled off. Similarly above 0.5, the low band will be rolled off. This can make the signal relatively quiet, so use the Output slider for level compensation.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Can't really make it much more straight-forward than that.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Routing is relatively easily explained: the first two Mono modes pick an input channel and process only that channel's audio, which is distributed to both plugin outputs at the end. Dual Mono mode will do the same as above but it will process each input channel's signal independently. The stereo linked mode also processes both input channels, but the strongest gain reduction of both channels will be applied to both.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 For use on a single guitar signal, you'd go with one of the Mono modes. Dual Mono is best for a bus, where each signal is individual and hard panned. Stereo linked mode is probably best used for a single guitar signal that has stereo effects like reverb on it, so that its stereo field doesn't collapse.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 (If it wasn't clear already: this plugin is not intended to be used on clean DI signals, but rather on already (re-/sim-) amped guitar recordings.)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/chug_thug.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Instrument%20FX/chug_thug.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="mic_combiner.jsfx" type="effect" desc="Mic Combiner">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Mic Combiner\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This is a utility to facilitate the process of merging two mono microphone signals into one. It processes each microphone signal individually, allows to set a balance/mix between both microphones, and sums them to mono.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 For example, if you've recorded a guitar/bass cabinet with two mics, you'd send one of the mics into the left input, and the other one into the right input channel. You can then invert the polarity ("flip the phase") of each microphone, adjust their individual levels, and add individual filtering.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Position sliders are used to delay the signals against each other, and even adjust their timing in relation to the rest of the project. You would do this to bring their phases into sync. When positioning microphones, you are usually measuring distances, plus distances are easier to measure than timings, so it makes more sense to use millimeters as the unit rather than milliseconds or even samples. Unfortunately, the value range makes the two sliders very coarse, so it's recommended to adjust them with Cmd/Ctrl held.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The Position parameter uses magic to go back in time. Ah well, it exploits the Plugin Delay Compensation. If at least one Position slider is negative, Reaper will send samples to the plugin earlier than on other tracks, which would usually be intended to make up for tiny delays introduced by certain algorithms. Sending samples to such a "slow" plugin ahead of time makes it output its signal at the correct time, in sync with other tracks. But very sneakily, this plugin doesn't really take the time it told Reaper it would, which makes it possible for samples to come out of the plugin earlier than they should. You can use this e.g. to make up delays introduced by setting up microphones too far from the recorded source. Forward to the past! :)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/mic_combiner.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Instrument%20FX/mic_combiner.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Lo-Fi">
+    <reapack name="signal_crusher.jsfx" type="effect" desc="Signal Crusher">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Signal Crusher\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A combination of everything "retro" to degrade a signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Resampling and interpolation based reconstruction, with filtering at various stages. Bit reduction from 24 down to 0 bits, including the fitting dithering noise to go with it.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The dithering noise can be attenuated so that it doesn't become too overwhelming or annoying, and there's an auto- blanking feature that will turn off the noise while no signal is currently running through the plugin.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Note that the "Downsampled to" slider is NOT an actual control, but just a display to let you know what sample rate the downsampled signal is currently operating at.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It may also be worth mentioning that the downsampling and reconstruction filters are only active while the related section is also operative. If downsampling or reconstruction are set to "off", the filters won't do anything.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/signal_crusher.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Lo-Fi/signal_crusher.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="telephone.jsfx" type="effect" desc="Telephone">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Telephone\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Makes a signal sound like through a phone receiver.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Degrades a regular input signal by compression and multiple stages of hard band filtering, as well as adding crackles, background noise and distortion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The obvious application would be on vocals, but it can also wreak havoc on other sources, like drums, maybe to completely obliterate a set of room mics?\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/telephone.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Lo-Fi/telephone.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Metering">
+    <reapack name="correlation_meter.jsfx" type="effect" desc="Correlation Meter">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Correlation Meter\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Stereo phase relation scope, Pearson product-moment correlation. Tells you how much of a difference there is between L/R channels of an audio signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 May not seem very important, but all over the world there are devices that will sum stereo mixes into mono signals, be it radio, club P.A. or mobile phone. If the L/R phase relation is too much out of balance, the best stereo mix will fall apart and sound like amateur's work once it's summed to mono. That's why it's good to keep an eye on phase correlation.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Reading the meter is pretty easy. If no signal is present, there's no bar. As soon as a signal is present, the meter will display a green bar which informs you of the phase correlation.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 +1 is the optimal goal, this means both channels are in absolute harmony. 0 means everything is OK, but don't let the phases drift further apart. -1 is the worst case scenario, it means the channels are totally out of phase and would 100% cancel each other out when summed down to mono.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 I added colour coding to the moving indicator; red bad, green good.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 That's really all there's to it.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/correlation_meter.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Metering/correlation_meter.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="phase_scope.jsfx" type="effect" desc="Phase Scope">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Phase Scope\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This is also commonly known as Goniometer, Vector Scope or Lissajous display. It visualizes the relation of amplitude and phase in a signal, i.e. "the stereo field".\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/phase_scope.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Metering/phase_scope.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="stereo_checker.jsfx" type="effect" desc="Stereo Checker">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Stereo Checker\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Displays the inter-channel relation of a two-channel input signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Super simple monitoring tool that analyzes the audio going into it and tells you the relation of the two input channels.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 So... why would you want this?\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Especially when collaborating with others, it's common to send project files back and forth. When you receive e.g. a WAV file that is displayed in Reaper with two channel lanes, it's quite possible that the audio on those channels isn't actually a real stereo signal (with different content on both channels) but just a mono signal (with identical audio on both channels) that has been incorrectly exported or encoded at some point.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you have such a file, that appears to be stereo but in truth is only mono, then you can save a bit of project size and processing power by removing the duplicate (and thereby completely unnecessary) audio channel from it.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 To evaluate if your audio clip is really stereo, or only mono after all, you would usually have to mess around with routing tricks or the phase inversion test, and that's a bit much effort. Instead, just run your clip through this plugin and it will tell you how the audio channels are related.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If playback is paused and/or no signal is received, the display says Silence. If signal is being received and the audio on both channels is identical, the display will say Mono. And finally, a difference between the two channels of incoming audio will make the display say Stereo.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 That's all there's to it. Simple to use, quick results. :)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 NOTE: depending on their content and processing, some audio signals can jump between Mono and Stereo. So it can be beneficial to let this plugin run over longer portions of audio, to see if what looks like a normal mono signal for the most part really doesn't have some stereo sound effect or section burned into it somewhere. Or just keep it on the master all the time by default, it doesn't use any worthwile CPU resources anyway. :)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/stereo_checker.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Metering/stereo_checker.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="wave_scope.jsfx" type="effect" desc="Wave Scope">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Wave Scope\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Simple volume adjustment between -48 and +48 dBfs for non-destructive edits or gain staging between plugins.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/wave_scope.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Metering/wave_scope.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="MIDI">
+    <reapack name="midi_chord_trigger.jsfx" type="effect" desc="MIDI Chord Trigger">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 MIDI Chord Trigger\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The idea is to have a single playable octave of root notes, and control the type of chord these root notes trigger, as well as the MIDI octave on which these chords are triggered, from two other sections on the keyboard.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 With this, it's possible to trigger all kinds of chords very easily just by using a few simple key switches, which is very convenient when playing e.g. piano libraries or orchestral ensemble patches, all without actually having any knowledge of how to play those instruments.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 There are 12 freely assignable chord switch slots in the bottom half of the interface, each of which can be selected by pressing the corresponding note in the keyboard range set up in the "switch chord type" dropdown. Press the D# key in the MIDI octave set up in "switch chord type" and the next played note will trigger the chord type set in the D# (4th) chord switch slot.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 So use the "chord switch" slots first to set up the selection of chords you want to be available for you to switch and play. Press a key in the "switch chord type" MIDI key range to pick the chord future root notes should play. Use the keys in the "shift root octave" range to shift in which MIDI octave following root notes should be played. Finally, use the keys from the "play root notes" key range to trigger the defined chord type based on the played root note in the selected MIDI octave.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 TL;DR: Use one MIDI octave to switch between pre-selected chord types, then use another octave to shift the MIDI octave to play them in, finally play a notes in a third octave to actually trigger the chords.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 PLEASE NOTE: The interface doesn't prohibit setting all 3 key switch ranges up to sit in the same MIDI octave. Please DO NOT DO THIS! Make sure that all 3 key switch ranges are set up in different MIDI ocatves, else there will be undefined (and definitely corrupt) behaviour.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/midi_chord_trigger.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/MIDI/midi_chord_trigger.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Noise">
+    <reapack name="interpolated_noise.jsfx" type="effect" desc="Interpolated Noise">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Interpolated Noise\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Creates various characters of filtered stereo noise.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 New samples are not just randomly generated and then shot through a set of "voicing filters", but they're calculated by interpolation between multiple old and new random values, as well as what I would call slew limiting. Restricting the ramping speed for changes will inherently filter out higher frequencies.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 These noises are layered in randomness, meaning they will generate fast "clouds of randomness" which then move along slower "trails of randomness". Send them through a goniometer/Lissajous scope and you'll see.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 I find these noise characters very calm and pleasing, and overall a lot more natural and organic than dumb filtered white noise. However, they are unstable in volume and stereo field, which adds to the naturally chaotic sound but might not always be desirable.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 I tried to level them all around 0 dBfs RMS.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/interpolated_noise.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Noise/interpolated_noise.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="reference_noise.jsfx" type="effect" desc="Reference Noise">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Reference Noise\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Generates noise of different kinds to use as mixing reference.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It's an age-old audio engineer's trick to use pink noise as a reference signal for mixing. The spectrum of pink noise isn't an accurate reference to human hearing though, much rather an approximation and a workaround.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 By examining the spectral images of existing songs and mixes, and applying a few filtering stages to a signal of basic pink noise, the approximated workaround curve of pink noise can be "bent" into much more useful reference signals.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 That's what this thing is. I analyzed a wide variety of songs from various styles and eras, and created a list of filtering profiles that turn primitive pink noise into useful reference signals.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Run the output of this plugin into the sidechain/key input of your favorite spectrum analyzer, if it has a sidechain input, and try to mix your tracks to approximate its spectral curve.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/reference_noise.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Noise/reference_noise.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Stereo">
+    <reapack name="m-s_fader.jsfx" type="effect" desc="M-S Fader">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 M-S Fader\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Converts a stereo L/R input to a Mid/Side signal and then fades between 100% Mid signal and 100% Side signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If the fader is fully left at -100, then only the Mid signal is sent to the output. If the fader sits fully right at +100, only the side signal is sent to the output. If the fader is centered at 0, the output is the sum of 100% Mid and 100% Side, i.e. the unchanged input signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 You can use this to either cancel out the Mid signal (voices or drums usually) or to do the exact opposite, i.e. cancel out the stereo sides and focus in on the panorama center/mid signal.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/m-s_fader.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Stereo/m-s_fader.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="stereo_bleed_remover.jsfx" type="effect" desc="Stereo Bleed Remover">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Stereo Bleed Remover\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Say you have a stereo clip, but some of the L signal is audible on the R channel and some of the R signal is audible on the L channel. Say you don't want that.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This plugin will attempt to remove the channel bleed, so that you have two separate L/R channels, and only an absolute minimum trace of signal bleed is left.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The process inherently loses some volume, so use the Trim slider to adjust the level (post FX) if desired.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 NOTE:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This process will only work (well) with signals that have no phase differences between direct sources and their opposite bleed partials, like if stereo tracks were previously unsatisfyingly panned.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Signals recorded with two microphones, and both mics panned to opposite L/R channels, will likely contain runtime/phase differences between the direct signals and their bleed partials on the opposite channels.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 With such material, this process will probably fail.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/stereo_bleed_remover.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Stereo/stereo_bleed_remover.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="stereo_pan.jsfx" type="effect" desc="Stereo Pan">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Stereo Pan\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Implementation of various standard panning laws, as well as some of my own customized types.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/stereo_pan.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Stereo/stereo_pan.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Utility">
+    <reapack name="dc_offset.jsfx" type="effect" desc="DC Offset">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 DC Offset\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Adds a DC Offset (0 Hz non-moving frequency) to all channels of a signal.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This will usually not be a desirable thing, but it will help you when testing DC filters for functionality. :)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/dc_offset.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Utility/dc_offset.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="impulse_generator.jsfx" type="effect" desc="Impulse Generator">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Impulse Generator\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This will generate a 1-sample impulse when the trigger slider is pulled over to the right.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 May not sound terribly exciting, but creates the perfect source to send through devices you want to capture as IR.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 You would use this to capture a reverb or delay tail, the frequency profile of a guitar cabinet or EQ, etc.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Load the generator as the first plugin on an empty track then insert the plugins or devices to capture behind it. Switch the record mode of the track to Output, start the recording and push the Trigger slider to the right. Stop the recording, trim the recorded item down to a sensible length, make sure it has no crossfades at start and end.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 IMPORTANT: you need to zoom right in and ensure that the first sample in the item is the first sample that is not on the center zero line. If you don't do this, the IR is going to be delayed, and you'll have to remove the delay in ReaVerb later by trimming the start/end times.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Export the resulting item into a WAV file, and load that WAV into ReaVerb, done.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/impulse_generator.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Utility/impulse_generator.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="volume_range_trim.jsfx" type="effect" desc="Volume Range Trim">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Volume Range Trim\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Volume adjustment in a selectable +/- Decibel range for controlled automation.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Who needs another volume plugin?! Well, it depends. For regular track control or inter-plugin gain staging, probably nobody.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This plugin is aimed at those unhappy with the way the volume envelopes scale in Reaper. Insert this plugin where you need it, select the Range you want to change the volume in, switch the Scaling to make the changes faster or slower, and then automate the Trim Amount slider instead of the track volume envelope.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Remember drawing many, many points into an envelope and then messing with the point values and point shapes endlessly, hoping to eventually get them right?\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Just insert this plugin instead, set a few linear points on the envelope lane for the Trim Amount slider, and restrict or scale the linear envelope changes to more gentle or sudden ones with the Range and Scale options.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/volume_range_trim.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Utility/volume_range_trim.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="volume_trim.jsfx" type="effect" desc="Volume Trim">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Volume Trim\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Simple volume adjustment between -48 and +48 dB for non-destructive edits or gain staging between plugins.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/volume_trim.png</link>
+      </metadata>
+      <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
+        <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Utility/volume_trim.jsfx</source>
+      </version>
+    </reapack>
+  </category>
+  <metadata>
+    <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 chokehold JSFX\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 A variety of free {\field{\*\fldinst{HYPERLINK "https://www.reaper.fm/sdk/js/"}}{\fldrslt{\ul
+JSFX
+}}}
+ plugins I created for use in {\field{\*\fldinst{HYPERLINK "https://www.reaper.fm/"}}{\fldrslt{\ul
+Reaper
+}}}
+.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Visit the {\field{\*\fldinst{HYPERLINK "https://github.com/chkhld/jsfx/blob/main/PLUGINS.md"}}{\fldrslt{\ul
+plugins index page
+}}}
+ for an overview of all of my currently published JSFX plugins, including screenshots and short descriptions. {\i See the source files for more specific details and instructions.}  \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Installation\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Visit the {\field{\*\fldinst{HYPERLINK "https://github.com/chkhld/jsfx/blob/master/PLUGINS.md"}}{\fldrslt{\ul
+plugins index page
+}}}
+ and download what you want from there, or {\field{\*\fldinst{HYPERLINK "https://github.com/chkhld/jsfx/releases/"}}{\fldrslt{\ul
+get the full release here
+}}}
+.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab If you don't know what to do with these files, watch the {\field{\*\fldinst{HYPERLINK "https://reaperblog.net/2015/06/quick-tip-how-to-install-js-plugins/"}}{\fldrslt{\ul
+Reaper Blog tutorial
+}}}
+ on how to install JSFX plugins.\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Support\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This is just a fun project for me, I do this on the side to waste time or template C++ code, so don't expect too much of an effort. But if you find any bugs, or if you have any suggestions for improvements, feel free to report them in the {\field{\*\fldinst{HYPERLINK "https://github.com/chkhld/jsfx/issues"}}{\fldrslt{\ul
+issue tracker
+}}}
+, I'll have a look there every now and then.  \par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Enjoy!\par}
+}
+]]></description>
+  </metadata>
+</index>
