@@ -1,8 +1,9 @@
-desc:    Knee Clipper
-version: 1.8.2a
-author:  chokehold
-tags:    processing gain amplitude clipper distortion saturation
-link:    https://github.com/chkhld/jsfx/
+desc:       Knee Clipper
+version:    1.8.2a
+author:     chokehold
+tags:       processing gain amplitude clipper distortion saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/knee_clipper.png
 about:
  # Knee Clipper
  
@@ -124,10 +125,7 @@ slider8:dBTrim=0<-12,12,0.01>Trim [dB]
 // automatically adapt to the number of channels of the track.
 
 @init // -----------------------------------------------------------------------
-  
-  // Stop Reaper from re-initializing the plugin every time playback is reset
-  ext_noinit = 1;
-  
+ 
   // Convenience variable to save CPU cycles during processing
   halfPi = $pi * 0.5;
   
@@ -730,3 +728,4 @@ slider8:dBTrim=0<-12,12,0.01>Trim [dB]
     // Increment counter to next channel
     channel += 1;
   );
+ 
