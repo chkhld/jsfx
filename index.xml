@@ -832,6 +832,12 @@ plugins index page
  for an overview of all of my currently published JSFX plugins, including screenshots and short descriptions. {\i See the source files for more specific details and instructions.}  \par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \par}
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel1 \b \fs32 Installation\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you have the {\field{\*\fldinst{HYPERLINK "https://reapack.com/"}}{\fldrslt{\ul
+ReaPack Extension
+}}}
+ installed, you can add the repository to Reaper with this URL:\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 https://raw.githubusercontent.com/chkhld/jsfx/master/index.xml\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you {\b don't} have ReaPack installed, you can also add these plugins on a per-file basis.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Visit the {\field{\*\fldinst{HYPERLINK "https://github.com/chkhld/jsfx/blob/master/PLUGINS.md"}}{\fldrslt{\ul
 plugins index page
 }}}
