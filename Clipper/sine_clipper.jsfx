@@ -1,0 +1,136 @@
+desc:       Sine Clipper
+version:    1.8.2
+author:     chokehold
+tags:       processing gain amplitude clipper distortion saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/sine_clipper.png
+about:
+ # Sine Clipper
+ 
+ Clipper that uses the smoothness of the sine wave to tame loud signal peaks.
+ 
+ In floating point audio, the sample values -1.0 and +1.0 are "as loud as it
+ could possibly be". A sample value beyond -1.0 or +1.0 would overdrive your
+ D/A converter and lead to distortion. A value of 0.0 means total silence.
+ 
+ The usual way to clip a signal is to either hard-restrict it into the range
+ between -1 and +1, i.e. "clip" every louder sample to the -1/+1 maximum, or
+ to apply something like a sigmoid function to it, that gradually attenuates
+ the input, thereby also restricting sample values to inside the -1/+1 range.
+ 
+ But hard clipping causes nasty and harsh harmonics, and soft clipping tends
+ to sound buzzy and quieten the signal. This clipper makes use of both those
+ principles, but with a twist that makes it much better.
+ 
+ The sine function is not a sigmoid, so its output will not keep approaching
+ the -1/+1 limit without ever reaching it. At 1/2π the sine function outputs
+ exactly 1.0, also for negative polarity. The value of 1/2π is ~1.5708 which
+ as a sample value is roughly +3.922 dBfs, that's well above the 0 dBfs mark.
+ In other words: the sine function can soft-clip very loud signals down from
+ +3.922 dBfs to 0 dBfs -- that is, as long as the incoming samples are below
+ that magic 1/2π value.
+ 
+ After the magical 1/2π point, the output of the sine function will start to
+ gradually approach 0 again, which is of little use for clipping, because it
+ means louder samples don't just get restricted to the -1/+1 limit, but they
+ create quieter output the louder they become. So something needs to be done
+ to stop this from happening.
+ 
+ And that's what this clipper does. Samples values outside [-1/2π,+1/2π] are
+ just hard-clipped, everything else inside is soft-clipped using the sine.
+ 
+ Or to put it into real-world relation by throwing them numbers around again:
+ signal levels of up to ~ +3.922 dBfs (well above 0 dBfs) will NOT merely be
+ brutishly hard-clipped, instead they are shaped and stay hard-clipping-free.
+ So the incoming signal could be nearly +4 dBfs above the point at which the
+ level meters usually start freaking out - and there still won't be any hard
+ clipping, also no overs on your track.
+ 
+ A great thing about the sine function is that its output values stay closer
+ to the input value, especially at larger values, than many other comparable
+ functions like e.g. the beloved hyperbolic tangent or arctangent. Therefore
+ it introduces way less distortion harmonics while letting more of the input
+ signal survive, and there's much less attenuation in the lower volumes than
+ those aforementioned sigmoids tend to cause. The transition into distortion
+ also happens noticeably smoother.
+ 
+ TL;DR: More headroom, louder signal, fewer artifacts, softer clipping onset,
+ less "buzz". There's no reason to keep using regular sigmoid-based clippers
+ anymore like a basic boomer. ;)
+
+// ----------------------------------------------------------------------------
+slider1:dBCeil=0<-48,0,0.01>Ceiling [dBfs]
+slider2:dBGain=0<-48,48,0.01>Boost [dB]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Convenience variables for CPU economy during processing
+  halfPi     = $pi * 0.5;
+  oneOverSix = 1/6;
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (pow(2, decibels * oneOverSix));
+  
+  // SINE CLIPPING -------------------------------------------------------------
+  //
+  // The output of the sine function is within the range [-1,+1] as long as its
+  // input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
+  // overdrive, with less distortion than common hyperbolic tangent saturation.
+  //
+  // This type of clipping doesn't use a ceiling, if you want one then you have
+  // to boost the signal into this function first, and attenuate it later on by
+  // the factor 1/boost.
+  //
+  function sineClip (sample) local (inside)
+  (
+    // Evaluate whether the sample is outside of range [-1/2π,+1/2π]
+    inside = (abs(sample) < halfPi);
+    
+    // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
+    // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
+    // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
+    // it through the sin() function, which returns values in range [-1,+1], so
+    // the signal is gently scaled until well over the usual 0 dBfs hard limit.
+    //
+    inside * sin(sample) + !inside * sign(sample);
+  );
+
+@slider
+  
+  // Turns slider dB values into float gain factors
+  gain = dBToGain(dBGain);
+  wall = dBToGain(dBCeil);
+  
+  // Ceiling-related boost factor
+  wallBoost = 1.0 / wall;
+  
+@sample
+  
+  // Set this to 0 to start with first input channel
+  channel = 0;
+  
+  // Cycle through all of the plugin's input channels
+  while (channel < num_ch)
+  (
+    // Repetitive spl(n) addressing is slow
+    channelSample = spl(channel);
+    
+    // Apply boost/gain to input sample
+    channelSample *= gain;
+    
+    //  To get a 'real' ceiling, the input needs to be boosted first,
+    //  then the signal clipped, and finally the boosted and clipped
+    //  output has to be attenuated again.
+    //
+    channelSample = sineClip(wallBoost * channelSample) * wall;
+    
+    // Write the processed sample to the channel output
+    spl(channel) = channelSample;
+    
+    // Increment counter to next channel
+    channel += 1;
+  );
+  

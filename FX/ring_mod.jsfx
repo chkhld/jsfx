@@ -1,0 +1,330 @@
+desc:       Ring Mod
+version:    1.8.2
+author:     chokehold
+tags:       effect fx modulation distortion
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/ring_mod.png
+about:
+ # Ring Mod
+ 
+ In simple terms, this multiplies the input signal with a carrier signal,
+ which can lead to all sorts of warbly modulation and distortion effects.
+ 
+ The carrier signal can be selected from a number of trivial oscillators,
+ or it can be set to use the input signal itself for ultimate modception.
+ 
+ Frequency selection uses two sliders: the first slider sets the base in
+ Kilohertz, the second slider sets the offset from the base in Hertz. To
+ use e.g. 1250 Hz as the carrier's frequency, use any combination of kHz
+ and Hz, for example kHz at 1.0 and Hz at 250.0, or set e.g. kHz to 0.75
+ and the Hz slider to 500.0. Either will sum to the 1250 Hz target.
+ 
+ If the "self" carrier is picked, the two Frequency sliders are not used.
+ 
+ The Bias slider will add a static offset to the carrier signal and push
+ its polarity towards fully positive or negative.
+ 
+ Turning up the Instability slider will introduce non-linearities to the
+ carrier signal's frequency and the feedback path. The carrier frequency
+ will become unstable and deviate up and down from the set value. Slight
+ noise addition will make the feedback path a little more random.
+ 
+ The Feedback slider defines how much of the previously processed signal
+ (input * carrier) bleeds back into the input stage of the process.
+ 
+ Turn up the Drive slider to add sweet saturation to the carrier signal.
+ 
+ Use the Mix slider to find the perfect balance between the unprocessed
+ dry input and the processed wet output signal. With the Mix slider set
+ to 0.0, the processing is bypassed to save CPU.
+ 
+ The Trim slider is a simple output gain stage, use it for compensation
+ when the process makes things very loud or quiet. Even with processing
+ bypassed (Mix at 0.0), the output trim gain will still be applied.
+
+// ----------------------------------------------------------------------------
+slider1:oscill=0<0,7,{Sine,Triangle,Saw rising,Saw falling,Pulse 25%,Pulse 50% / Square,Pulse 75%,Self}>Carrier
+slider2:hzFrqC=0<0,10,0.01>Frequency [kHz]
+slider3:hzFrqF=500.0<1,1000,0.1>Frequency [Hz]
+slider4:pctBis=0<-100,100,0.01>Bias [%]
+slider5:pctIns=0<0,100,0.01>Instability [%]
+slider6:pctFdb=0<0,100,0.01>Feedback [%]
+slider7:pctDrv=0<0,100,0.01>Drive [%]
+slider8:pctMix=100<0,100,0.01>Mix [%]
+slider9:dBTrim=0<-12,12,0.0001>Trim [dB]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init // =======================================================================
+  
+  // Convenience variables
+  halfPi   = 0.5 * $PI; // 1.5707963267949
+  twoPi    = 2.0 * $PI; // 6.28318530717959
+  sqrt05   = sqrt(0.5); // 0.70710678118655
+  oscPhase =  999;      // Oscillator phase buffer
+  fdbStore = 1000;      // Process feedback buffer
+  dcfStore = 2000;      // DC filter bank buffer
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  
+  // Maximum gain amount in Drive circuit
+  maxDrive = dBToGain(6);
+  
+  // RANDOMIZATION -------------------------------------------------------------
+  //
+  // Returns a randomized value in range [-limit,+limit]
+  //
+  function random (limit) (rand() * 2.0 * limit - limit);
+  
+  // SINE WAVE -----------------------------------------------------------------
+  //  _     _
+  // / \   / \
+  //    \_/   \_/
+  //
+  function tickSine (channel)
+  (
+    oscPhase[channel] += (twoPi * oscFreq);
+    
+    // Wrap phase >2π around from 0
+    oscPhase[channel] += ((oscPhase[channel] >= twoPi) * -twoPi) + ((oscPhase[channel] < 0.0) * twoPi);
+    
+    sin(oscPhase[channel]);
+  );
+  
+  // TRIANGLE WAVE -------------------------------------------------------------
+  //
+  // /\  /\  /\  
+  //   \/  \/  \/
+  //
+  function tickTriangle (channel)
+  (
+    oscPhase[channel] += oscFreq;
+    oscPhase[channel] += ((oscPhase[channel] > 1.0) * -1.0) + ((oscPhase[channel] < 0.0) * 1.0);
+    
+    ((oscPhase[channel] < 0.5) * (4.0 * oscPhase[channel] - 1.0)) + ((oscPhase[channel] >= 0.5) * (1.0 - 4.0 * (oscPhase[channel] - 0.5)));
+  );
+
+  // SAW WAVE (+1 rising, -1 falling) ------------------------------------------
+  // 
+  //           /| /| /| 
+  // Rising:  / |/ |/ |
+  //
+  //          |\ |\ |\
+  // Falling: | \| \| \
+  //
+  function tickSaw (channel, direction)
+  (
+    oscPhase[channel] += direction * oscFreq;
+    oscPhase[channel] += ((oscPhase[channel] > 1.0) * -1.0) + ((oscPhase[channel] < 0.0) * 1.0);
+    
+    ((oscPhase[channel] * 2.0) - 1.0);
+  );
+  
+  // PULSE WAVE ----------------------------------------------------------------
+  //      ___
+  // 25%: | |
+  //        |________|
+  //      ______
+  // 50%: |    |
+  //           |_____|
+  //      _________
+  // 75%: |       |
+  //              |__|
+  //
+  function tickPulse (channel, width)
+  (
+    oscPhase[channel] += oscFreq;
+    oscPhase[channel] += ((oscPhase[channel] > 1.0) * -1.0) + ((oscPhase[channel] < 0.0) * 1.0);
+    
+    ((oscPhase[channel] < width) * 1) + ((oscPhase[channel] > width) * -1);
+  );
+  
+  // HYPERBOLIC TANGENT --------------------------------------------------------
+  //
+  // Approximation implemented after code posted by Antto on KVR
+  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function tanh (number) local (xa, x2, x3, x4, x7, res)
+  (
+    xa = abs(number); x2 = xa * xa; x3 = x2 * xa; x4 = x2 * x2; x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    sign(number) * res;
+  );
+  
+  // ONE POLE LOW PASS FILTER --------------------------------------------------
+  //
+  // Implemented after Nigel Redmon
+  // https://www.earlevel.com/main/2012/12/15/a-one-pole-filter/
+  //
+  function rcLP   (SR, Hz) instance (a0, b1) (b1 = exp(-twoPi * (Hz / SR)); a0 = 1.0 - b1);
+  function rcTick (sample) instance (z1) (z1 = (sample * this.a0) + (z1 * this.b1); z1);
+  
+  // DC BLOCKING FILTER --------------------------------------------------------
+  //
+  // Implemented after Julius O. Smith III
+  // https://ccrma.stanford.edu/~jos/filters/DC_Blocker_Software_Implementations.html
+  //
+  function dcBlock (sample) instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += sample - stateIn;
+    stateIn   = sample;
+    stateOut;
+  );
+  
+@slider // =====================================================================
+  
+  // Convenience variable for faster calculations later
+  invSrate = 1.0 / srate;
+  
+  // Oscillator frequency [0,1]
+  ctrFreq = (hzFrqC * 1000) + hzFrqF;
+  srcFreq = ctrFreq * invSrate;
+  
+  // Oscillator bias towards full +/- polarities [0,1]
+  bias = pctBis * 0.01;
+  
+  // Instability factor [0,10]
+  variation = pctIns * 0.005;
+  
+  // LP Filter to stabilize the instability (duh)
+  lpInstability.rcLP(srate, 10 + (90 * variation));
+  
+  // Instability noise floor level in feedback path [-dB]
+  noise = dBToGain(-144.0 + (pctIns * 0.01) * 35.5);
+  
+  // Process feedback amount [0,1]
+  feedback = pctFdb * 0.01;
+  
+  // Soft saturation signal amounts [0,1]
+  drive = pctDrv * 0.01;
+  mixDrive = drive;
+  mixClean = sin(halfPi + drive * halfPi); // Slow start, fast end
+  
+  // Wet and dry signal mix factors [0,1]
+  mixWet = pctMix * 0.01;
+  mixDry = 1.0 - mixWet;
+  
+  // Turns the Trim slider's dB value into a gain factor
+  trim = dBToGain(dBTrim);
+  
+  // Evaluating certain conditions now saves doing it in the per-sample block
+  processing = (pctMix  > 0);
+  unstable   = (pctIns  > 0);
+  biased     = (pctBis != 0);
+  selfMode   = (oscill == 7);
+  driven     = (pctDrv  > 0);
+  
+@sample // =====================================================================
+  
+  // Only do full processing if Mix percentage > 0
+  processing ?
+  (
+    // Default values for signal modifiers
+    carrier     = 0.0;
+    instability = 0.0;
+    
+    // If instability parameter turned up
+    unstable ?
+    (
+      // Calculate and slow down instability offset for carrier oscillator
+      randomize   = (random(ctrFreq) * invSrate) * variation;
+      instability = lpInstability.rcTick(randomize);
+    );
+    
+    // Update carrier oscillator frequency, add instability
+    oscFreq = srcFreq + instability;
+    
+    // Calculate selected carrier oscillator
+    oscill == 0 ? (carrier = tickSine (0));
+    oscill == 1 ? (carrier = tickTriangle(0));
+    oscill == 2 ? (carrier = tickSaw  (0, 1.00));
+    oscill == 3 ? (carrier = tickSaw  (0,-1.00));
+    oscill == 4 ? (carrier = tickPulse(0, 0.25));
+    oscill == 5 ? (carrier = tickPulse(0, 0.50));
+    oscill == 6 ? (carrier = tickPulse(0, 0.75));
+    
+    // If non-self carrier oscillator selected
+    oscill <  7 ?
+    (
+      // Apply bias to the carrier signal
+      carrier += biased * bias;
+    );
+    
+    // Start with first input channel
+    channel = 0;
+    
+    // Cycle through all of the plugin's input channels
+    while (channel < num_ch)
+    (
+      // If carrier oscillator is "self", use input signal of this channel
+      oscill == 7 ? (carrier = spl(channel) + biased * bias);
+      
+      // Make copy of input sample because spl() addressing is slow
+      splDry = spl(channel);
+      
+      // If carrier signal set to "self"
+      selfMode ?
+      (
+        // Add input sample and (scaled) instability, already contains bias
+        carrier += splDry + (instability * 10);
+      );
+      
+      // Store copy of dry input sample in wet processing buffer
+      splWet = splDry;
+      
+      // Add the stored feedback sample to the current wet sample
+      splWet += fdbStore[channel] * feedback;
+      
+      // If Drive parameter is turned up
+      driven ?
+      (
+        // Calculate driven sample from wet sample and compensate its level
+        splDrv = tanh(splWet * drive * maxDrive) * sqrt05;
+        
+        // Mix driven sample in with un-driven wet sample
+        splWet = (splWet * mixClean) + (splDrv * mixDrive);
+      );
+      
+      // Multiply the wet sample with the carrier signal
+      splWet *= carrier;
+      
+      // Generate a noise sample if instability active
+      fdbNoise = unstable * random(noise);
+      
+      // Store the wet processed sample (and instability) in the feedback buffer
+      fdbStore[channel] = (splWet + fdbNoise) * sqrt05;
+      
+      // Create mix of dry/wet signals
+      splWet = (splDry * mixDry) + (splWet * mixWet);
+      
+      // Apply DC filtering
+      dcf = dcfStore[channel];      // Pull filter for this channel from storage
+      splWet = dcf.dcBlock(splWet); // Process DC filter for this channel
+      dcfStore[channel] = dcf;      // Write processed filter back to storage
+      
+      // Write fully processed sample to output and apply trim gain
+      spl(channel) = splWet * trim;
+      
+      // Increment counter to next channel
+      channel += 1;
+    );
+  )
+  : // If not processing modulation, just do volume trim
+  (
+    // Start with first input channel
+    channel = 0;
+    
+    // Cycle through all of the plugin's input channels
+    while (channel < num_ch)
+    (
+      // Apply trim output gain
+      spl(channel) *= trim;
+      
+      // Increment counter to next channel
+      channel += 1;
+    );
+  );
+  

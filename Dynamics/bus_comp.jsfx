@@ -1,0 +1,1072 @@
+desc:       Bus Compressor
+version:    1.8.2
+author:     chokehold
+tags:       processing compressor dynamics gain
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/bus_comp.png
+about:
+ # Bus Compressor
+ 
+ A compressor primarily intended for signal densification, just to
+ avoid the word "glue". Use this wherever several different signal
+ sources meet and are combined into a single bus.
+ 
+ Input gain allows "boosting" the signal into the compressor, this
+ helps to bring background signals up, "make cymbals breathe" etc.
+ 
+ The Threshold, Ratio, Attack and Release settings are pretty much
+ as in any other compressor as well. If the Release is set to Auto,
+ the compressor will use a second release envelope, which helps to
+ keep a signal stable over long periods of time, but still lets it
+ "live" over shorter periods of time.
+ 
+ If the Sidechain is switched to External, the compressor will use
+ inputs 3+4 as the Left and Right key signals. There's a high pass
+ filter that lets the detector circuit focus on higher frequencies
+ to avoid pumping from kick drums and bass where not desired.
+ 
+ The channel routing switches between stereo and Mid/Side mode. In
+ stereo mode, the L channel is processed as the L channel, and the
+ R channel is processed as the R channel. In Mid/Side setting, the
+ L+R channels will be converted into M+S channels. M channel holds
+ the mid/center information of the signal, e.g. kick/snare/vocals,
+ and S channel holds the side/stereo information, e.g. guitars and
+ drum overheads. So in Mid/Side mode, the left sample holds center
+ information and the right sample holds the stereo information. In
+ M+S mode, the stereo field can appear "widened", depending on how
+ much each channel is compressed.
+ 
+ With stereo linking disabled, both L+R channels will be processed 
+ individually. Fading in stereo linking will make the detector act
+ on a mix of the L+R channels increasingly. If you have incoherent
+ signals (e.g. two separate guitars) on both channels, you'll most
+ likely not want any stereo linking. Coherent signals, e.g. drums,
+ will need stereo linking or their stereo image will suffer badly.
+ 
+ NOTE: if stereo liking is set to 100%, there won't be an audible
+ difference between L+R and M+S mode.
+ 
+ Instability will add a bit of low-level noise to the signal, both
+ the audible path as well as the detector path. The noise is auto-
+ blanked, meaning it won't hiss in quieter sections of the project.
+ It is very quiet (~ -89 dBfs RMS), so you probably won't be able
+ to hear it. But it adds different inconsistencies to every signal
+ path, audible + key/sidechain, like real-world analog devices do.
+ This results in ever so gentle "errors" in the compression, plus
+ it imparts an esoterically slight "graininess" onto the material.
+ 
+ The saturation circuit is gain-reduction dependent, so the harder
+ the compressor squashes the signal, the more soft saturation will
+ be introduced into the material.
+ 
+ Hard 0 dBfs output clipping may be enabled if so desired, but may
+ be a bit harsh and buzzy sounding. Use the Makeup gain to "boost"
+ the material into this, or don't.
+ 
+ Finally, Dry/wet mix fades between the unprocessed and processed
+ signals, this is also known as parallel or New York compression.
+
+// ----------------------------------------------------------------------------
+slider1: dBGain=0<-12, 12, 0.01>Input gain [dB]
+slider2: compThresh=0<-60, 0, 0.01>Threshold [dB]
+slider3: rawRatio=3<0, 6, {1.5,2,3,4,5,10,20}>Ratio [x:1]
+slider4: rawAttack=4<0, 5, {0.1,0.3,1,3,10,30}>Attack [ms]
+slider5: rawRelease=6<0, 6, {0.1,0.2,0.4,0.8,1.6,3.2,Auto}>Release [s]
+slider6: sidechain=0<0, 1, {Internal (inputs 1+2),External (inputs 3+4)}>Sidechain
+slider7: scFreq=75<20, 500, 1>SC high pass [Hz]
+slider8: midSide=0<0,1,{Stereo (L+R),Mid/Side (M+S)}>Channel routing
+slider9: linkAmount=100<0, 100, 1>Stereo link [%]
+slider10:instability=100<0,100,0.01>Instability [%]
+slider11:saturation=100<0,100,0.01>Saturation [%]
+slider12:dBTrim=0<-24, 24, 0.01>Makeup gain [dB]
+slider13:clip=0<0,1,{Disabled,Hard clip 0 dBfs}>Clip output
+slider14:pctMix=100<0,100,0.01>Dry/wet mix [%]
+
+in_pin:Input L
+in_pin:Input R
+in_pin:Sidechain L
+in_pin:Sidechain R
+out_pin:Output L
+out_pin:Output R
+
+// Don't need these because of UI metering
+options:no_meter
+
+@init  // ----------------------------------------------------------------------
+  
+  // Stop Reaper from re-initializing the plugin every time playback is reset
+  ext_noinit = 1;
+  
+  // Various convenience constants
+  M_LN10_20 = 8.68588963806503655302257837833210164588794011607333;
+  floatFloor = 0.0000000630957;  // dBToGain --> ~ -144 dBfs
+  noiseFloor = 0.00001258925412; // dBToGain --> ~  -98 dBfs
+  halfPi = $PI * 0.5;
+  satSpeed = 50.0;  // ms timing for saturation envelope follower
+  rcpSqrt2 = 0.7071067812; // Reciprocal constant 1.0 / sqrt(2.0)
+  compFeedback = 0.15;
+  
+  // Used to buffer input/output samples for GUI interaction
+  bufferInput  = 1000; // Raw input values
+  bufferKey    = 1002; // Sidechain key signal
+  bufferGR     = 1004; // Gain reduction as absolute float gain factors
+  bufferOutput = 1006; // Raw output values
+  //
+  bufferClipInput  = 1008;
+  bufferClipKey    = 1010;
+  bufferClipOutput = 1012;
+  
+  // Buffer for noise generation states
+  noiseState = 10000;
+  
+  // Converts signed dB values to normalized float gain factors.
+  // Divisions are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+  //
+  // Converts float gain factors to dB values
+  function gainTodB (float) local (below)
+  (
+    float = abs(float);
+    below = float < floatFloor;
+    float = below * floatFloor + (!below) * float;
+    (log(float) * M_LN10_20);
+  );
+  
+  // Stereo L+R and Mid/Side M+S conversion functions
+  //
+  function lrToM (sampleLeft, sampleRight) ((sampleLeft + sampleRight) * rcpSqrt2);
+  function lrToS (sampleLeft, sampleRight) ((sampleLeft - sampleRight) * rcpSqrt2);
+  function msToL (sampleMid,  sampleSide)  ((sampleMid  + sampleSide)  * rcpSqrt2);
+  function msToR (sampleMid,  sampleSide)  ((sampleMid  - sampleSide)  * rcpSqrt2);
+  
+  // DC Blocker to filter near-static frequency content
+  // that would otherwise "offset" the waveform.
+  function dcBlocker () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
+  );
+  
+  // SAMPLE RANDOMIZATION
+  //
+  // Returns a randomized sample value between [-limit,+limit]
+  // which can be used as basic white noise.
+  //
+  function random (limit) (rand() * 2.0 * limit - limit);
+  
+  // PINK NOISE
+  //
+  // "Warm" sounding, volume falls off at -3 dBfs per octave across the
+  // spectrum. Often said to be similar to the optimal mix balance, and
+  // to be generally pleasing to the human ear.
+  //
+  // Implemented after Larry Trammell's "newpink" method:
+  // http://www.ridgerat-tech.us/tech/newpink.htm
+  //
+  function tickPink (channel) local (offset, break, sample)
+  (
+    offset = channel * 50;
+    break = 0;
+    
+    sample = rand();
+    
+    break == 0 && sample <= 0.00198 ? (noiseState[offset+1] = random(1) * 3.8024; break = 1);
+    break == 0 && sample <= 0.01478 ? (noiseState[offset+2] = random(1) * 2.9694; break = 1);
+    break == 0 && sample <= 0.06378 ? (noiseState[offset+3] = random(1) * 2.5970; break = 1);
+    break == 0 && sample <= 0.23378 ? (noiseState[offset+4] = random(1) * 3.0870; break = 1);
+    break == 0 && sample <= 0.91578 ? (noiseState[offset+5] = random(1) * 3.4006; break = 1);
+    
+    noiseState[offset] = 0;
+    noiseState[offset] += noiseState[offset+1];
+    noiseState[offset] += noiseState[offset+2];
+    noiseState[offset] += noiseState[offset+3];
+    noiseState[offset] += noiseState[offset+4];
+    noiseState[offset] += noiseState[offset+5];
+    
+    noiseState[offset] * dBToGain(-15);
+  );
+  
+  // Hard clipping at 0 dBfs, restricts samples to range [-1,+1]
+  function hardclip ()
+  (
+    this = max(-1, min(1, this));
+  );
+  
+  // SINE CLIPPING -------------------------------------------------------------
+  //
+  // The output of the sine function is within the range [-1,+1] as long as its
+  // input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
+  // overdrive, with less distortion than common hyperbolic tangent saturation.
+  //
+  // This type of clipping doesn't use a ceiling, if you want one then you have
+  // to boost the signal into this function first, and attenuate it later on by
+  // the factor 1/boost.
+  //
+  function sineClip (sample) local (above, below, overs, polarity)
+  (
+    // Evaluate whether the sample is outside of range [-1/2π,+1/2π]
+    above = (sample > halfPi);
+    below = (sample < -halfPi);
+    overs = (above || below);
+    
+    // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
+    // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
+    // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
+    // it through the sin() function, which returns values in range [-1,+1] for
+    // peak sample values up to 1/2π, so well over the usual 0 dBfs hard limit.
+    //
+    sample = overs * sign(sample) + !overs * sin(sample);
+  );
+  
+  // SATURATION PROCESS
+  //
+  // Nothing special here, just adds a certain amount of soft
+  // clipped "warm tube drive" (sigh) onto the signal.
+  //
+  function saturate (drive) local (boost)
+  (
+    boost = 1.0 + (1.0 - drive);
+    this = (dryMix * this) + (satMix * sineClip(this * boost));
+  );
+  
+  // SIGNAL INSTABILITY
+  //
+  // Generates a noisefloor at ~ -89 dBfs RMS to make the signal
+  // become a little instable, as would be the case in an analog
+  // circuit. The noise is added to both the audible signal and
+  // the sidechain circuit, but it will be auto-blanked if input
+  // is quiet, so it will not "hiss" in the project when paused.
+  //
+  function variation (channel) local (channel)
+  (
+    noise = tickPink(channel) * noiseFloor * variationLevel;
+    noise;
+  );
+  
+  // SIDECHAIN FILTER
+  //
+  // Simple Biquad High Pass filter used in the sidechain circuit.
+  // Implemented after Andrew Simper's State Variable Filter paper.
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+  //
+  function eqHP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan(halfPi * (Hz / srate)); k = 1/Q;
+    a1 = 1/(1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = -k; m2 = -1.0;
+  );
+  //
+  function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
+  (
+    v3 = sample - ic2eq; v1 = this.a1 * ic1eq + this.a2 * v3;
+    v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
+    ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
+    (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
+  );
+  
+  // PRIMITIVE ENVELOPE FOLLOWER
+  //
+  // Follows the envelope of a signal at the speed set with the
+  // msTime argument. Higher ms values mean slower response to
+  // the signal, lower ms values mean faster response.
+  //
+  function envSetup (msTime) instance (coeff) local ()
+  (
+    coeff = exp(-1000 / (msTime * srate));
+  );
+  //
+  // It's possible to do the calculations in dB or in gain factors.
+  // Because this compressor uses many dB values, I decided against
+  // constantly converting values back and forth, but to just run
+  // the envelopes on dB values.
+  //
+  // The sample should already be abs()-ed by here to dBfs.
+  //
+  // The envelope is NOT kept in this variable, but in the PARENT
+  // variable containing this one. This is the case so one variable
+  // could hold one envelope value, but two follower instances with
+  // different timings which could both work on the same envelope.
+  //
+  function envTick (dBsample) instance (coeff) local (active)
+  (
+    active = (coeff != 0);
+    (!active * dBsample) + (active * (dBsample + coeff * (this..envelope - dBsample)));
+  );
+  
+  // ATTACK / RELEASE ENVELOPE
+  //
+  // This will turn a variable into a full envelope container that
+  // holds an envelope state as well as two time coefficients used
+  // for separate attack and release timings.
+  //
+  function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
+  (
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 / (msAttack  * srate));
+    coeffRel = exp(-1000 / (msRelease * srate));
+  );
+  //
+  // This calculates the new envelope state for the current sample.
+  // If the current sample is above the current envelope state, let
+  // the attack envelope run. And if the current sample is below the
+  // the current envelope state, then let the release envelope run.
+  // 
+  // The sample should already be abs()-ed by here to dBfs
+  //
+  function attRelTick (dBsample) instance (envelope, coeffAtt, coeffRel) local (above, change)
+  (
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
+    
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
+  );
+  
+  // ATTACK / DUAL RELEASE ENVELOPE
+  //
+  // Same as an attack/release envelope, but this has a second release stage,
+  // which allows for less static and more "program dependent" compression.
+  //
+  function attRelRelSetup (msAttack, msRelease1, msRelease2) instance (coeffAtt, coeffRel, release2) local ()
+  (
+    // Set attack and release time coefficients
+    coeffAtt = exp(-1000 / (msAttack   * srate));
+    coeffRel = exp(-1000 / (msRelease1 * srate));
+    release2.envSetup(msRelease2);
+  );
+  //
+  function attRelRelTick (dBsample) instance (envelope, coeffAtt, coeffRel, release2) local (above, change)
+  (
+    above  = (dBsample > envelope);
+    change = envelope - dBsample;
+    
+    // If above, calculate attack + if not above, calculate release
+    envelope = (above * (dBsample + coeffAtt * change)) + (!above * (dBsample + coeffRel * change));
+    
+    // If not above, run second release envelope
+    !above ? envelope = release2.envTick(envelope);
+  );
+  
+  // SATURATION ENVELOPE FOLLOWER
+  //
+  // To make the saturation smoother, this envelope follower will
+  // will "slow down" the amount of saturation that is applied to
+  // the compressed signal.
+  //
+  function satSetup (msSpeed) instance (satEnv) local ()
+  (
+    satEnv.envSetup(msSpeed);
+  );
+  //
+  function satTick (sampleGR) instance (satEnv, envelope) local ()
+  (
+    envelope = satEnv.envTick(sampleGR);
+    envelope;
+  );
+  
+  // GAIN CALCULATOR
+  //
+  // From all the various levels, this will calculate more
+  // values required to calculate with later on.
+  //
+  function gainCalcSetup (dBThreshold, fullRatio, dBKnee) instance (threshold, ratio, knee, kneeWidth, kneeUpper, kneeLower) local ()
+  (
+    threshold = dBThreshold;            // signed dBfs
+    ratio = 1/fullRatio;  // 1/x --> compression < 1, expansion > 1
+    knee = dBKnee;
+    kneeWidth = knee * 0.5;
+    kneeUpper = threshold + kneeWidth;
+    kneeLower = threshold - kneeWidth;
+  );
+  //
+  function gainCalcTick (dBsample) instance (ratio, knee, kneeLower, kneeUpper, threshold) local (dBReduction, slope)
+  (
+    dBReduction = dBsample;
+    slope = 1.0 - ratio;
+    
+    // If the signal is inside the confies of the set Soft Knee,
+    // calculate the appropriate "soft" reduction here.
+    (knee > 0.0) && (dBsample > kneeLower) && (dBsample < kneeUpper) ?
+    (
+      slope *= ((dBsample - kneeLower) / knee) * 0.5;
+      dBReduction = slope * (kneeLower - dBsample);
+    ):(
+      dBReduction = min(0.0, slope * (threshold - dBsample));
+    );
+    
+    // Return the gain reduction factor, i.e. NOT a sample value
+    dBToGain(dBReduction);
+  );
+  
+  // COMPRESSOR
+  //
+  // Finally, now all the individual components created
+  // earlier are combined into a single big compressor.
+  //
+  // Full ratio: >1 for compression, <1 for expansion
+  // dBThreshold: signed dBfs
+  // dBKnee: absolute/positive dB
+  // pctFeedback: % of previous GR detector feedback
+  //
+  function compSetup (msAttack, msRelease, dBThreshold, fullRatio, dBKnee, pctFeedback) instance (attRel, attRelRel, calc, feedback) local ()
+  (
+    attRel.attRelSetup(msAttack, msRelease);
+    attRelRel.attRelRelSetup(msAttack, msRelease, 100);
+    calc.gainCalcSetup(dbThreshold, fullRatio, dBKnee);
+    feedback = pctFeedback * 0.01;
+  );
+  //
+  function compTick (sample) instance (GR, feedback, attRel, attRelRel, calc) local (feedbackFactor, keyGain, keyDecibels)
+  (
+    // The amount of previous GR to apply to this key sample,
+    // this is essentially a 1-sample-delayed feedback.
+    feedbackFactor = 1.0 - ((1.0 - GR) * feedback);
+    
+    // The sidechain key sample value as a float gain factor.
+    // Doesn't need to be made absolute, this already happens
+    // outside after filtering, when the linking is prepared.
+    keyGain = sample * feedbackFactor;
+    
+    // Turn the key sample [-1;1] into a dBfs value
+    keyDecibels = gainTodB(keyGain);
+    
+    // Send the dBfs sample value into the envelope followers
+    // and get new envelope states. Both are being calculated
+    // here to avoid clicks and similar issues when switching
+    // between Manual and Auto release settings.
+    attRel.attRelTick(keyDecibels);
+    attRelRel.attRelRelTick(keyDecibels);
+    
+    // Calculate the required gain reduction for this input
+    // sample based on user-specified parameters. This will
+    // output the GR value as a float gain factor, NOT in dB.
+    GR = calc.gainCalcTick(rawRelease < 6 ? attRel.envelope : attRelRel.envelope);
+    
+    // This return value is the float factor gain adjustment
+    // that needs to be applied to the signal sample, it is
+    // NOT an actual sample value.
+    GR;
+  );
+  
+  // CONVENIENCE VARIABLES -----------------------------------------------------
+  //
+  // Makes handling channel buffers more accessible
+  L = 0;
+  R = 1;
+  M = 2;
+  S = 4;
+  channelNames = 100;
+  channelNames[L] = "L";
+  channelNames[R] = "R";
+  channelNames[M] = "M";
+  channelNames[S] = "S";
+  //
+  // The speed (dB per second) at which the meters return to 0 (well... -144)
+  falloff = dBToGain(-36 / srate);
+  //
+  // Falloff level at which clipping markers clear again
+  clipClear = dBToGain(-54); // 1.5 sec
+  //
+  // Used in @gfx to check if size has changed
+  lastWidth  = -1;
+  lastHeight = -1;
+  //
+  // Various buffered dB values as float gain factors
+  dB_Neg48 = dBToGain(-48);
+  dB_Neg36 = dBToGain(-36);
+  dB_Neg24 = dBToGain(-24);
+  dB_Neg12 = dBToGain(-12);
+  dB_Neg06 = dBToGain(-6);
+  dB_Neg03 = dBToGain(-3);
+  dB_Zero0 = dBToGain(0);
+  //
+  // Transparency values; I got tired of changing them repetitively
+  alphaMeterBars  = 0.75;
+  alphaMeterClip  = 0.75;
+  alphaMeterText  = 0.75;
+  alphaMarkerHard = 0.8;
+  alphaMarkerText = 0.8;
+  
+  // Set up the dynamic saturation envelope followers
+  satL.satSetup(satSpeed);
+  satR.satSetup(satSpeed);
+  
+@slider  // --------------------------------------------------------------------
+  
+  // Set the compressor ratio
+  rawRatio == 0 ? compRatio = 1.5;
+  rawRatio == 1 ? compRatio = 2;
+  rawRatio == 2 ? compRatio = 3;
+  rawRatio == 3 ? compRatio = 4;
+  rawRatio == 4 ? compRatio = 5;
+  rawRatio == 5 ? compRatio = 10;
+  rawRatio == 6 ? compRatio = 20;
+  
+  // Set the compressor attack time
+  rawAttack == 0 ? compAttack = 0.1;
+  rawAttack == 1 ? compAttack = 0.3;
+  rawAttack == 2 ? compAttack = 1;
+  rawAttack == 3 ? compAttack = 3;
+  rawAttack == 4 ? compAttack = 10;
+  rawAttack == 5 ? compAttack = 30;
+  
+  // Set the compressor release time
+  rawRelease == 0 ? compRelease = 100;
+  rawRelease == 1 ? compRelease = 200;
+  rawRelease == 2 ? compRelease = 400;
+  rawRelease == 3 ? compRelease = 800;
+  rawRelease == 4 ? compRelease = 1600;
+  rawRelease == 5 ? compRelease = 3200;
+  rawRelease == 6 ? compRelease = 2400; // sets 2nd release time internally
+  
+  // Sidechain instability "noise" level
+  variationLevel = instability * 0.01; // [0,100] --> [0,1]
+  
+  // Knee level changes depending on Ratio setting.
+  // Higher ratio = narrow knee, lower ratio = wide knee.
+  compKnee = 20.0 / compRatio;
+  
+  // Prepare two compressor instances, one for each channel.
+  compL.compSetup(compAttack, compRelease, compThresh, compRatio, compKnee, compFeedback);
+  compR.compSetup(compAttack, compRelease, compThresh, compRatio, compKnee, compFeedback);
+  
+  // Calculate amount of stereo-linking in the key signal
+  lnkMix = linkAmount * 0.01;
+  splMix = 1.0 - lnkMix;
+  
+  // Configure the sidechain high-pass filters
+  filterL.eqHP(scFreq, 1.5);
+  filterR.eqHP(scFreq, 1.5);
+  
+  // Turn input/output dB gain values into float factors
+  gainIn  = dBToGain(dBGain);
+  gainOut = dBToGain(dBTrim);
+  //
+  // Below only required for GUI drawing
+  gainThreshold = dBToGain(compThresh);
+  
+  // The amount of saturation added to the signal
+  satMix = saturation * 0.01;
+  dryMix = 1.0 - satMix;
+  
+  // The amount of dry and processed signal to blend
+  wetDry = pctMix * 0.01;
+  dryWet = 1.0 - wetDry;
+  
+@gfx 0 200 // ------------------------------------------------------------------
+  
+  // Reset the canvas to black
+  gfx_dest = -1;
+  gfx_clear = 0;
+  gfx_a = 1.0;
+  
+  // RECALCULATE DIMENSIONS AND RELATIONS --------------------------------------
+  //
+  // Only really needs to happen if screen size changes
+  (lastWidth != gfx_w) || (lastHeight != gfx_h) ? 
+  (
+    // Height for marker/label numbers (1px pad + 8px font + 1px pad, and that twice)
+    markers_h = 20;
+    
+    // The main display area that contains the level metering bars
+    display_w = gfx_w - 8; // -4px from right leaves room for overs indication
+    display_h = gfx_h - 2*markers_h; // 1x top, 1x bottom
+    display_y = markers_h; // Top-most Y coordinate
+    
+    // There are 2 channels with 4 meter bars each = 8 meter bars in total
+    pad_h   = 2; // Transparent/black padding between meter bars
+    pad_lane_h = 2; // Transparent/black padding between stereo pairs
+    lane_h  = (display_h / 8) - pad_lane_h; // "One metering bar of any kind"
+    meter_h = lane_h - pad_h; // Each only needs 1x pad underneath
+    half_lane_h = lane_h / 2; // Used for vertically centering text
+    
+    // These are gfx_x values for various elments.
+    X_0dB   = display_w;
+    X_Over  = X_0dB + 1;
+    X_Neg48 = X_0dB * dB_Neg48;
+    X_Neg36 = X_0dB * dB_Neg36;
+    X_Neg24 = X_0dB * dB_Neg24;
+    X_Neg12 = X_0dB * dB_Neg12;
+    X_Neg06 = X_0dB * dB_Neg06;
+    X_Neg03 = X_0dB * dB_Neg03;
+    
+    // Update size flags to not calculate again next cycle
+    lastWidth  = gfx_w;
+    lastHeight = gfx_h;
+  );
+  
+  // THRESHOLD MARKER POSITIONS
+  //
+  // Can't be offloaded to the one-time calculation above, because these will
+  // change without the size of the UI changing.
+  //
+  X_Threshold = X_0dB * gainThreshold;
+  //
+  // Required to calculate label widths below
+  lbl_w = lbl_h = 0;
+  //
+  // Compute the X position of where the Threshold label should go
+  //
+  // Text 0.00 and left of line marker
+  (compThresh == 0) ?
+  (
+    gfx_measurestr("0.00x", lbl_w, lbl_h); // Added x as spacer
+    X_LabelThreshold = X_Threshold - lbl_w;
+  );
+  //
+  // Text -X.XX and left of line marker
+  (compThresh > -3) && (compThresh < 0) ?
+  (
+    gfx_measurestr("-0.00x", lbl_w, lbl_h); // Added x as spacer
+    X_LabelThreshold = X_Threshold - lbl_w;
+  );
+  //
+  // Text -XX.XX and right of line marker
+  (compThresh <= -3) ?
+  (
+    gfx_measurestr("x", lbl_w, lbl_h); // Added xx as spacer
+    X_LabelThreshold = X_Threshold + lbl_w + 2;
+  );
+  
+  // VERTICAL dB MARKER LINES --------------------------------------------------
+  //
+  // For -48 to -3 dBfs
+  gfx_set(1,1,1,0.35); // Dark gray
+  //
+  // -48 dBfs
+  gfx_x = X_Neg48;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -36 dBfs
+  gfx_x = X_Neg36;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -24 dBfs
+  gfx_x = X_Neg24;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -12 dBfs
+  gfx_x = X_Neg12;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -6 dBfs
+  gfx_x = X_Neg06;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // -3 dBfs
+  gfx_x = X_Neg03;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  //
+  // Somewhat lighter, only for 0 dBfs -------------- 0 dBfs
+  gfx_set(1,1,1,0.6); // Gray
+  //
+  // 0 dBfs
+  gfx_x = X_0dB;
+  gfx_y = 0;
+  gfx_lineto(gfx_x,gfx_h,1);
+  
+  // TEXT dB MARKER LABELS -----------------------------------------------------
+  //
+  gfx_measurestr("-48", lbl_w, lbl_h);
+  //
+  // For -36 to -3 dBfs
+  gfx_set(1,1,1,0.35); // Dark gray
+  //
+  // TOP LABELS ------------------------
+  //
+  gfx_y = 4;
+  gfx_setfont(0);
+  //
+  gfx_x = X_Neg36 + 2;
+  gfx_drawstr("-36");
+  //
+  gfx_x = X_Neg24 + 8;
+  gfx_drawstr("-24");
+  //
+  gfx_x = X_Neg12 + 8;
+  gfx_drawstr("-12");
+  //
+  gfx_x = X_Neg06 + 8;
+  gfx_drawstr("-6");
+  //
+  gfx_x = X_Neg03 + 8;
+  gfx_drawstr("-3");
+  //
+  gfx_x = X_0dB - 14;
+  gfx_drawstr("0");
+  //
+  // BOTTOM LABELS -----------------------
+  //
+  gfx_y = display_h + markers_h + lbl_h;
+  gfx_setfont(0);
+  //
+  gfx_x = X_Neg36 + 2;
+  gfx_drawstr("-36");
+  //
+  gfx_x = X_Neg24 + 8;
+  gfx_drawstr("-24");
+  //
+  gfx_x = X_Neg12 + 8;
+  gfx_drawstr("-12");
+  //
+  gfx_x = X_Neg06 + 8;
+  gfx_drawstr("-6");
+  //
+  gfx_x = X_Neg03 + 8;
+  gfx_drawstr("-3");
+  //
+  gfx_x = X_0dB - 14;
+  gfx_drawstr("0");
+  
+  // THRESHOLD MARKER ----------------------------------------------------------
+  //
+  // Line marker
+  gfx_x = X_Threshold;
+  gfx_y = 0;
+  gfx_set(1,0.5,0,alphaMarkerHard); // Red or Orange
+  gfx_rectto(gfx_x+3,gfx_h);
+  //
+  // Marker label ------------ TOP
+  gfx_x = X_LabelThreshold;
+  gfx_y = lbl_h + 4;
+  gfx_set(1,0.5,0,alphaMarkerText); // Red or Orange
+  gfx_printf("%02.2f", compThresh);
+  //
+  // Marker label ------------ BOTTOM
+  gfx_x = X_LabelThreshold;
+  gfx_y = gfx_h - markers_h - 1;
+  gfx_printf("%02.2f", compThresh);
+  
+  // LEVEL METERING LANES ------------------------------------------------------
+  //
+  // Every channel has multiple meters: raw in, key/sidechain, GR, output.
+  // Meters are grouped per type: input L/R, key L/R, etc.
+  // Draw each channel separately, leave space between bars for other channel.
+  //
+  // Cycle through both plugin channels
+  channel = L;
+  while (channel <= R)
+  (
+    // SAMPLE PREPARATION --------------
+    // 
+    // The processing block always writes up-to-date samples into buffers.
+    // 
+    // Fetch the buffered (absolute) samples and restrict them to a useful range
+    splIn   = max(dB_Neg48, min(dB_Zero0, bufferInput[channel]));
+    splKey  = max(dB_Neg48, min(dB_Zero0, bufferKey[channel]));
+    splGR   = max(dB_Neg48, min(dB_Zero0, bufferGR[channel]));
+    splOut  = max(dB_Neg48, min(dB_Zero0, bufferOutput[channel]));
+    //
+    // Prepare clipping state buffers (reset to 0 if below clearing level)
+    bufferClipInput[channel]  = (bufferClipInput[channel]  > clipClear) * bufferClipInput[channel];
+    bufferClipKey[channel]    = (bufferClipKey[channel]    > clipClear) * bufferClipKey[channel];
+    bufferClipOutput[channel] = (bufferClipOutput[channel] > clipClear) * bufferClipOutput[channel];
+    
+    // METER BAR DRAWING ---------------
+    //
+    // Figure out the Y positions for each meter
+    meterOffset  = (channel * lane_h) + pad_lane_h;
+    meterInput_y = display_y + meterOffset;
+    meterKey_y   = display_y + meterOffset + ((lane_h + pad_lane_h) * 2);
+    meterGR_y    = display_y + meterOffset + ((lane_h + pad_lane_h) * 4);
+    meterOut_y   = display_y + meterOffset + ((lane_h + pad_lane_h) * 6);
+    //
+    (splIn > dB_Neg48) ? // INPUT METER ----------------------------------------
+    (
+      X_SampleIn = max(0, min(display_w, X_0dB * splIn));
+      
+      gfx_y = meterInput_y;
+      gfx_x = 0;
+      gfx_set(0,0.75,0,alphaMeterBars); // Green
+      gfx_rectto(X_SampleIn, meterInput_y+meter_h);
+      
+      // Clipping marker -----
+      bufferClipInput[channel] ?
+      (
+        gfx_y = meterInput_y;
+        gfx_x = X_Over;
+        gfx_set(1,0,0,alphaMeterClip); // Red
+        gfx_rectto(gfx_w, meterInput_y+meter_h);
+      );
+    );
+    //
+    (splKey > dB_Neg48) ? // SIDECHAIN METER -----------------------------------
+    (
+      X_SampleKey = max(0, min(display_w, X_0dB * splKey));
+      
+      gfx_y = meterKey_y;
+      gfx_x = 0;
+      gfx_set(1,0.8,0,alphaMeterBars); // Orange Yellow
+      gfx_rectto(X_SampleKey, meterKey_y+meter_h);
+      
+      // Clipping marker -----
+      bufferClipKey[channel] ?
+      (
+        gfx_y = meterKey_y;
+        gfx_x = X_Over;
+        gfx_set(1,0,0,alphaMeterClip); // Red
+        gfx_rectto(gfx_w, meterKey_y+meter_h);
+      );
+    );
+    //
+    (splGR < 1) ? // GR METER ----------------------------
+    (
+      X_SampleGR = max(0, min(display_w, X_0dB * splGR));
+      
+      gfx_y = meterGR_y;
+      gfx_x = X_SampleGR;
+      gfx_set(1,0.5,0,alphaMeterBars); // Purple
+      gfx_rectto(display_w+1, meterGR_y+meter_h);
+      
+      // GR doesn't need clipping marker...
+    );
+    //
+    (splOut > dB_Neg48) ? // OUTPUT METER --------------------------------------
+    (
+      X_SampleOut = max(0, min(display_w, X_0dB * splOut));
+      
+      gfx_y = meterOut_y;
+      gfx_x = 0;
+      gfx_set(0,0.7,1,alphaMeterBars); // Blue
+      gfx_rectto(X_SampleOut, meterOut_y+meter_h);
+      
+      // Clipping marker -----
+      bufferClipOutput[channel] ?
+      (
+        gfx_y = meterOut_y;
+        gfx_x = X_Over;
+        gfx_set(1,0,0,alphaMeterClip); // Red
+        gfx_rectto(gfx_w, meterOut_y+meter_h);
+      );
+    );
+    
+    // METER BAR LABELS --------------------------------------------------------
+    //
+    // Get dimensions
+    gfx_measurestr("XX", lbl_w, lbl_h);
+    lbl_offset_y = half_lane_h - (lbl_h / 2);
+    //
+    // INPUT LABEL ---------------------
+    gfx_y = meterInput_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0,0,0,alphaMeterText); // Transparent black
+    gfx_drawstr("Input ");
+    gfx_drawstr(channelNames[channel]);
+    //
+    // KEY LABEL -----------------------
+    gfx_y = meterKey_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0,0,0,alphaMeterText); // Transparent black
+    gfx_drawstr("Key ");
+    gfx_drawstr(channelNames[channel + (midSide * 2)]);
+    //
+    // G-R LABEL -----------------------
+    gfx_y = meterGR_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0.5,0.5,0.5,alphaMeterText); // Transparent gray
+    gfx_drawstr("GR ");
+    gfx_drawstr(channelNames[channel + (midSide * 2)]);
+    //
+    // OUTPUT LABEL --------------------
+    gfx_y = meterOut_y + lbl_offset_y;
+    gfx_x = 12;
+    gfx_set(0,0,0,alphaMeterText); // Transparent black
+    gfx_drawstr("Output ");
+    gfx_drawstr(channelNames[channel]);
+    
+    
+    // Advance to next channel
+    channel += 1;
+  );
+
+@sample // ---------------------------------------------------------------------
+  
+  // Safety mechanism to force @gfx recalculation (once) if UI size was changed
+  (gfx_w != lastWidth) || (gfx_h != lastHeight) ? 
+  (
+    lastWidth  = -1;
+    lastHeight = -1;
+  );
+  
+  // Store the dry input samples here for later dry/wet mixing
+  dryL = spl0;
+  dryR = spl1;
+  
+  // Store dry input samples (absolute) in buffer for GUI evaluation
+  bufferInput[L] = max(bufferInput[L]*falloff, abs(spl0));
+  bufferInput[R] = max(bufferInput[R]*falloff, abs(spl1));
+  //
+  // Check if the input samples are clipping and store into a buffer
+  bufferClipInput[L] = max(bufferClipInput[L]*falloff, (bufferInput[L]>1));
+  bufferClipInput[R] = max(bufferClipInput[R]*falloff, (bufferInput[R]>1));
+  
+  // Input gain. Branching is slow, so it's faster to
+  // just do this multiplication instead of running
+  // a check to see if it's needed, i.e. dBGain != 0
+  //
+  spl0 *= gainIn;
+  spl1 *= gainIn;
+  
+  // If Mid/Side mode is set, convert L+R samples to M+S.
+  // This will turn the left sample into the mid sample,
+  // and the right sample into the side sample.
+  (midSide == 1) ?
+  (
+    // Can mis-use these as buffers here, since they're
+    // not yet required by other parts of the process.
+    keyL = lrToM(spl0, spl1);
+    keyR = lrToS(spl0, spl1);
+    
+    spl0 = keyL;
+    spl1 = keyR;
+  );
+  
+  // Use channel 1+2 inputs if internal sidechain is
+  // selected, otherwise use channel 3+4 input samples
+  // for external sidechain. When using external input,
+  // apply input gain to the key signal too.
+  //
+  scExternal = (sidechain == 1);
+  keyL = !scExternal * spl0 + scExternal * (spl2 * gainIn);
+  keyR = !scExternal * spl1 + scExternal * (spl3 * gainIn);
+  
+  // Add sample value offsets to make the compression
+  // more unstable, this is like circuit noise.
+  //
+  (instability > 0) ?
+  (
+    // If the input samples carry a signal, add noise.
+    // If they don't, then add no noise.
+    spl0 += (spl0 != 0) * variation(0);
+    spl1 += (spl1 != 0) * variation(1);
+    
+    // If the key samples carry a signal, add noise
+    // If they don't, then add no noise.
+    keyL += (keyL != 0) * variation(2);
+    keyR += (keyR != 0) * variation(3);
+  );
+  
+  // Filter sidechain samples (if filter cutoff > 20 Hz)
+  // 
+  (scFreq > 20) ?
+  (
+    keyL = filterL.eqTick(keyL);
+    keyR = filterR.eqTick(keyR);
+  );
+  
+  // Make key signal absolute from this point on
+  keyL = abs(keyL);
+  keyR = abs(keyR);
+  
+  // Stereo-link the detector signal?
+  (lnkMix > 0) ?
+  (
+    // Take average of both key channels
+    linked = (abs(keyL) + abs(keyR)) * 0.5 * lnkMix;
+  //linked = sqrt(sqr(keyL) + sqr(keyR)) * lnkMix;
+    // |
+    // +--> Smarter method, but becomes too loud when linked
+    
+    // Adjust mix volume of un-linked samples
+    keyL *= splMix;
+    keyR *= splMix;
+    
+    // Add linked sample on top
+    keyL += linked;
+    keyR += linked;
+  );
+  
+  // Write absolute values of the sidechain key samples to a buffer
+  bufferKey[L] = max(bufferKey[L]*falloff, abs(keyL));
+  bufferKey[R] = max(bufferKey[R]*falloff, abs(keyR));
+  //
+  // Check if the sidechain samples are clipping and store into a buffer
+  bufferClipKey[L] = max(bufferClipKey[L]*falloff, (bufferKey[L]>1));
+  bufferClipKey[R] = max(bufferClipKey[R]*falloff, (bufferKey[R]>1));
+  
+  // Run the comp calculations on whatever mixture
+  // of the two input channels is left in the keys,
+  // then apply the resulting GR to the signal.
+  //
+  spl0 *= compL.compTick(keyL);
+  spl1 *= compR.compTick(keyR);
+  
+  // Write the gain reduction to buffers as absolute float gain factors
+  bufferGR[L] = abs(compL.GR);
+  bufferGR[R] = abs(compR.GR);
+  
+  // Saturation stage
+  (saturation > 0) ?
+  (
+    // Send the compressor gain reduction values to the
+    // saturation envelope followers to slow them down.
+    saturationL = satL.satTick(compL.GR);
+    saturationR = satR.satTick(compR.GR);
+    
+    // Add saturation to the samples
+    spl0.saturate(saturationL);
+    spl1.saturate(saturationR);
+    
+    // Run the DC blocker on each sample to filter out
+    // potential DC offset introduced by saturation.
+    spl0.dcBlocker();
+    spl1.dcBlocker();
+  );
+  
+  // If Mid/Side processing is selected
+  (midSide == 1) ?
+  (
+    // Can mis-use these as buffers here, since they're
+    // no longer required by other parts of the process.
+    // The samples need to be buffered, else there will
+    // be problems converting back from M+S to L+R.
+    keyL = spl0;
+    keyR = spl1;
+    
+    // Convert the M+S samples back to L+R samples
+    spl0 = msToL(keyL, keyR);
+    spl1 = msToR(keyL, keyR);
+  );
+  
+  // Makeup gain. Probably faster to just multiply than
+  // doing conditional branching. This can be abused to
+  // "drive" the signal into the hard clipping stage.
+  spl0 *= gainOut;
+  spl1 *= gainOut;  
+  
+  // Output hard clipping
+  (clip == 1) ?
+  (
+    spl0.hardclip();
+    spl1.hardclip();
+  );
+  
+  // Dry/wet mix
+  // 
+  // Mixes unprocessed and processed signals this way:
+  // - 0.0: 100% dry
+  // - 0.5:  50% dry + 50% wet
+  // - 1.0: 100% wet
+  //
+  (wetDry < 1) ?
+  (
+    spl0 = dryWet * dryL + wetDry * spl0;
+    spl1 = dryWet * dryR + wetDry * spl1;
+  );
+  
+  // Write absolute values of the output samples to a buffer
+  bufferOutput[L] = max(bufferOutput[L]*falloff, abs(spl0));
+  bufferOutput[R] = max(bufferOutput[R]*falloff, abs(spl1));
+  //
+  // Check if the output samples are clipping and store into a buffer
+  bufferClipOutput[L] = max(bufferClipOutput[L]*falloff, (bufferOutput[L]>1));
+  bufferClipOutput[R] = max(bufferClipOutput[R]*falloff, (bufferOutput[R]>1));
+  

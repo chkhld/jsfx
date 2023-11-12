@@ -1,0 +1,44 @@
+desc:       Volume Trim
+version:    1.8.2
+author:     chokehold
+tags:       utility gain volume trim
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/volume_trim.png
+about:
+ # Volume Trim
+ 
+ Simple volume adjustment between -48 and +48 dB for non-destructive edits or
+ gain staging between plugins.
+
+// ----------------------------------------------------------------------------
+slider1:dBTrim=0<-48,48,0.0001>Trim [dB]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts signed dB values to normalized float gain factors.
+  // Divisions are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
+
+@slider
+  
+  // Turns the slider's dB value into a float gain factor
+  trim = dBToGain(dBTrim);
+  
+@sample
+  
+  // Start with first input channel
+  channel = 0;
+  
+  // Cycle through all of the plugin's input channels
+  while (channel < num_ch)
+  (
+    // Apply trim gain to the current channel's sample
+    spl(channel) *= trim;
+    
+    // Increment counter to next channel
+    channel += 1;
+  );
+  

@@ -1,0 +1,328 @@
+desc:       Test Signals
+version:    1.8.2
+author:     chokehold
+tags:       utility synth noise tone
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/test_signals.png
+about:
+ # Test Signals
+ 
+ A collection of things that make noises.
+ 
+ I needed a suite of tools that help me examine plugins and hardware
+ devices, so I made one. The output from this plugin is added on top
+ of the input signal, so it's possible to chain several in a row.
+ 
+ There are 14 possible signals that can be generated on each channel
+ individually: silence, sine, rising or falling saw, triangle, three
+ pulse widths (50% creates a rectangular wave), noise colours white,
+ pink and purple, digital noise (random -1/0/+1 samples), as well as
+ positive and negative DC offset.
+ 
+ The Output Channels setting allows not just regular stereo signals,
+ but also two L/R-only mono modes. The idea was to let two different
+ signals run, and have the possibility to quickly switch them.
+ 
+ Because having just one wide-range slider to set the frequency will
+ give essentially zero resolution below ~1000 Hz, and too fine steps
+ above ~1000 Hz, I decided to make the frequency setting easier, but
+ maybe not immediately understandable.
+ 
+ You set a base frequency first, then you increase the multiplier to
+ multiply (Base Hz x Multiplier) which will be the actual frequency.
+ 
+ Example:
+   Base  10 Hz  x  Multiplier 10   =   100 Hz
+   Base 100 Hz  x  Multiplier 4.4  =   440 Hz
+   Base 100 Hz  x  Multiplier 10   =  1000 Hz
+ 
+ The Volume L+R slider changes the levels of both L+R channelsby the
+ the same amount. The L/R Offset sliders will change volume for each
+ channel individually.
+ 
+ Flipping a channel's polarity is also often called inverting phase,
+ or rotating the phase by 180°. Having the same generator and volume
+ both channels and flipping the polarity while the L+R Summed output
+ mode is selected will result in silence from phase cancellation.
+ 
+ The generators are trivial i.e. not band-limited or oversampled, so
+ some of them (or their combinations) could cause DC offset. I added
+ an optional DC blocker just before the output to remove this again.
+
+// ----------------------------------------------------------------------------
+slider1: generatorL=1<0,13,1{None,Sine,Saw rising,Saw falling,Triangle,Pulse 25%,Pulse 50% / Square,Pulse 75%,White Noise,Pink Noise,Purple Noise,Digital Noise,DC Offset positive,DC Offset negative}> Generator L
+slider2: generatorR=1<0,13,1{None,Sine,Saw rising,Saw falling,Triangle,Pulse 25%,Pulse 50% / Square,Pulse 75%,White Noise,Pink Noise,Purple Noise,Digital Noise,DC Offset positive,DC Offset negative}> Generator R
+slider3: viewFreq=1000<10,22000,0.1> Frequency [Hz]
+slider4: frequency=1<0,2,1{10 Hz,100 Hz,1 kHz}> Frequency base [Hz]
+slider5: multiply=10<0.1,22,0.1> Frequency multiplier
+slider6: volume=-12<-48,48,0.01> Volume L+R [dB]
+slider7: volumeL=0<-48,48,0.1> Volume L offset [dB]
+slider8: volumeR=0<-48,48,0.1> Volume R offset [dB]
+slider9: invertL=0<0,1,1{Normal,Flipped}> Flip Polarity L
+slider10:invertR=0<0,1,1{Normal,Flipped}> Flip Polarity R
+slider11:outRouting=0<0,3,1{Stereo,Mono (left),Mono (right),Mono (summed)}> Output Channels
+slider12:blockDC=1<0,1,1{Disabled,Enabled}> DC Blocker
+
+// This is a generator and doesn't need input monitoring
+out_pin:left output
+out_pin:right output
+
+@init
+  
+  // Stop Reaper from re-initializing the plugin every time playback is reset
+  ext_noinit = 1;
+  
+  // Used for oscillator phase calculations
+  twoPi      = 6.28318530717958647692528676656;
+  
+  // Oscillator center frequency, default to
+  // 1 kHz @ 44.1 kHz in case something goes wrong.
+  oscFreq    = 0.02267573696145124716553;
+  
+  // Parameter value containers
+  oscType    = 1000;
+  oscPhase   = 1010;
+  dcStateIn  = 1020;
+  dcStateOut = 1030;
+  outGain    = 1040;
+  
+  noiseState  = 10100;
+  noiseBuffer = 10200;
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  
+  // BASE FREQUENCY SELECTION
+  // 
+  // Converts the slider's 0,1,2 values into
+  // 10,100,1000 Hertz base frequency values.
+  //
+  function baseFrequency ()
+  (
+    frequency == 0 ? 10 : (frequency == 1 ? 100 : 1000);
+  );
+  
+  // PHASE RESET
+  //
+  function resetPhases ()
+  (
+    oscPhase[0] = (oscType[0] == 4) ? 0.25 : 0.0;
+    oscPhase[1] = (oscType[1] == 4) ? 0.25 : 0.0;
+  );
+  
+  // DC BLOCKER
+  //
+  function dcBlocker (channel)
+  (
+    dcStateOut[channel] *= 0.99988487;
+    dcStateOut[channel] += spl(channel) - dcStateIn[channel];
+    dcStateIn [channel]  = spl(channel);
+    dcStateOut[channel];
+  );
+  
+  // SINE WAVE
+  //  _     _
+  // / \   / \
+  //    \_/   \_/
+  //
+  function tickSine (channel)
+  (
+    oscPhase[channel] += (twoPi * oscFreq);
+    
+    // Wrap phase >2π around from 0
+    oscPhase[channel] += ((oscPhase[channel] >= twoPi) * -twoPi) + ((oscPhase[channel] < 0.0) * twoPi);
+    
+    sin(oscPhase[channel]);
+  );
+  
+  // SAW WAVE (+1 rising, -1 falling)
+  // 
+  //           /| /| /| 
+  // Rising:  / |/ |/ |
+  //
+  //          |\ |\ |\
+  // Falling: | \| \| \
+  //
+  function tickSaw (channel, direction)
+  (
+    oscPhase[channel] += direction * oscFreq;
+    oscPhase[channel] += ((oscPhase[channel] > 1.0) * -1.0) + ((oscPhase[channel] < 0.0) * 1.0);
+    
+    ((oscPhase[channel] * 2.0) - 1.0);
+  );
+  
+  // TRIANGLE WAVE
+  //
+  // /\  /\  /\  
+  //   \/  \/  \/
+  //
+  function tickTriangle (channel)
+  (
+    oscPhase[channel] += oscFreq;
+    oscPhase[channel] += ((oscPhase[channel] > 1.0) * -1.0) + ((oscPhase[channel] < 0.0) * 1.0);
+    
+    ((oscPhase[channel] < 0.5) * (4.0 * oscPhase[channel] - 1.0)) + ((oscPhase[channel] >= 0.5) * (1.0 - 4.0 * (oscPhase[channel] - 0.5)));
+  );
+  
+  // PULSE WAVE
+  //      ___
+  // 25%: | |
+  //        |________|
+  //      ______
+  // 50%: |    |
+  //           |_____|
+  //      _________
+  // 75%: |       |
+  //              |__|
+  //
+  function tickPulse (channel, width)
+  (
+    oscPhase[channel] += oscFreq;
+    oscPhase[channel] += ((oscPhase[channel] > 1.0) * -1.0) + ((oscPhase[channel] < 0.0) * 1.0);
+    
+    ((oscPhase[channel] < width) * 1) + ((oscPhase[channel] > width) * -1);
+  );
+  
+  // WHITE NOISE
+  //
+  // Just random values between -1 and +1
+  // 
+  function tickWhite ()
+  (
+    ((rand() * 2)-1);
+  );
+  
+  // PURPLE NOISE
+  //
+  // Harsh sounding, increases at +6 dBfs per octave across the whole
+  // spectrum.
+  // 
+  // Implementation inspired by Judd Niemann's ReSampler project:
+  // https://github.com/jniemann66/ReSampler/blob/master/ditherer.h#L353
+  // 
+  function tickPurple (channel) local (random)
+  (
+    random = tickWhite();
+    
+    noiseBuffer[channel] = random - noiseState[channel];
+    noiseState [channel] = random;
+    noiseBuffer[channel];
+  );
+  
+  // DIGITAL NOISE
+  //
+  // My own creation, random picks of [-1, 0, +1]
+  //
+  function tickDigital () local (factor1, factor2)
+  (
+    factor1 = tickWhite() > 0;
+    factor2 = tickWhite() < 0;
+    
+    factor1 + factor2 - 1;
+  );
+  
+  // PINK NOISE
+  //
+  // "Warm" sounding, volume falls off at -3 dBfs per octave across the
+  // spectrum. Often said to be similar to the optimal mix balance, and
+  // to be generally pleasing to the human ear.
+  //
+  // Implemented after Larry Trammell's "newpink" method:
+  // http://www.ridgerat-tech.us/tech/newpink.htm
+  //
+  function tickPink (channel) local (offset, break, sample)
+  (
+    offset = channel * 50;
+    break = 0;
+    
+    sample = rand();
+    
+    break == 0 && sample <= 0.00198 ? (noiseState[offset+1] = tickWhite() * 3.8024; break = 1);
+    break == 0 && sample <= 0.01478 ? (noiseState[offset+2] = tickWhite() * 2.9694; break = 1);
+    break == 0 && sample <= 0.06378 ? (noiseState[offset+3] = tickWhite() * 2.5970; break = 1);
+    break == 0 && sample <= 0.23378 ? (noiseState[offset+4] = tickWhite() * 3.0870; break = 1);
+    break == 0 && sample <= 0.91578 ? (noiseState[offset+5] = tickWhite() * 3.4006; break = 1);
+    
+    noiseState[offset] = 0;
+    noiseState[offset] += noiseState[offset+1];
+    noiseState[offset] += noiseState[offset+2];
+    noiseState[offset] += noiseState[offset+3];
+    noiseState[offset] += noiseState[offset+4];
+    noiseState[offset] += noiseState[offset+5];
+    
+    noiseState[offset] * dBToGain(-15);
+  );
+  
+@slider
+  oscFreq  = baseFrequency() * multiply / srate;
+  viewFreq = baseFrequency() * multiply;
+  
+  outGain[0]  = dBToGain(volume + volumeL);
+  outGain[1]  = dBToGain(volume + volumeR);
+  oscType[0] != generatorL ? (oscType[0] = generatorL; resetPhases());
+  oscType[1] != generatorR ? (oscType[1] = generatorR; resetPhases());
+
+@sample
+  
+  // I know it would be more economical to NOT
+  // calculate two channels but then only send
+  // one channel out, and instead just not let
+  // the second channel be calculated. But the
+  // CPU overhead is so low in this case, that
+  // it won't result in a relevant difference.
+  //
+  // There are probably more efficient ways to
+  // handle all those conditional cases below,
+  // but it also doesn't generate any relevant
+  // CPU overhead, so this will do just fine.
+  // 
+  // Generator left
+  generatorL == 1 ? (spl0 += tickSine(0));
+  generatorL == 2 ? (spl0 += tickSaw(0,1));
+  generatorL == 3 ? (spl0 += tickSaw(0,-1));
+  generatorL == 4 ? (spl0 += tickTriangle(0));
+  generatorL == 5 ? (spl0 += tickPulse(0,0.25));
+  generatorL == 6 ? (spl0 += tickPulse(0,0.5));
+  generatorL == 7 ? (spl0 += tickPulse(0,0.75));
+  generatorL == 8 ? (spl0 += tickWhite(0));
+  generatorL == 9 ? (spl0 += tickPink(0));
+  generatorL == 10? (spl0 += tickPurple(0));
+  generatorL == 11? (spl0 += tickDigital(0));
+  generatorL == 12? (spl0 += 1);
+  generatorL == 13? (spl0 -= 1);
+  //
+  // Generator right
+  generatorR == 1 ? (spl1 += tickSine(1));
+  generatorR == 2 ? (spl1 += tickSaw(1,1));
+  generatorR == 3 ? (spl1 += tickSaw(1,-1));
+  generatorR == 4 ? (spl1 += tickTriangle(1));
+  generatorR == 5 ? (spl1 += tickPulse(1,0.25));
+  generatorR == 6 ? (spl1 += tickPulse(1,0.5));
+  generatorR == 7 ? (spl1 += tickPulse(1,0.75));
+  generatorR == 8 ? (spl1 += tickWhite(1));
+  generatorR == 9 ? (spl1 += tickPink(1));
+  generatorR == 10? (spl1 += tickPurple(1));
+  generatorR == 11? (spl1 += tickDigital(1));
+  generatorR == 12? (spl1 += 1);
+  generatorR == 13? (spl1 -= 1);
+  
+  // Polarity inversion
+  invertL    == 1 ? (spl0 *= -1);
+  invertR    == 1 ? (spl1 *= -1);
+  
+  // Output volume with channel sum compensation
+  spl0 *= outGain[0] * (generatorR == 0 ? 2.0 : 1.0);
+  spl1 *= outGain[1] * (generatorL == 0 ? 2.0 : 1.0);
+  
+  // Output channel routing
+  outRouting == 1 ? (spl1 = spl0);
+  outRouting == 2 ? (spl0 = spl1);
+  outRouting == 3 ? (spl0 = spl1 = (spl0 + spl1) * 0.5);
+  
+  // DC Blocker
+  blockDC == 1 ?
+  (
+    spl0 = dcBlocker(0);
+    spl1 = dcBlocker(1);
+  );
+ 

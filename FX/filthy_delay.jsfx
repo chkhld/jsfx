@@ -1,0 +1,407 @@
+desc:       Filthy Delay
+version:    1.8.2
+author:     chokehold
+tags:       timing delay echo saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/filthy_delay.png
+about:
+ # Filthy Delay
+ 
+ Fun little delay with multiple routings, plus optional filters and 
+ boostable saturation in the feedback path.
+ 
+ Three signal routing modes:
+   Stereo:    the delay tap happens where the signal happened
+   Inverted:  the delay happens on the opposite side of the signal
+   Ping-pong: the delay reflects back and forth between both sides
+ 
+ The tap time defines the time that passes between the input signal
+ and the first delay repetition. The maximum tap time is 3 seconds.
+ 
+ The feedback percentage controls how loud the repetition is played
+ back. The higher the feedback percentage is set, the longer is the
+ tail of delay taps. The lower the feedback value is, the faster is
+ the decay to silence of the delay taps.
+ 
+ The feedback path has one highpass and one lowpass filter, both of
+ them will be applied to each feedback tap. If the feedback quality
+ is set to "Filthy", the filters will become slightly more resonant
+ at their cutoff points.
+ 
+ If the feedback quality is set to Clean, only filtering is applied,
+ otherwise the delay taps stay untouched. Switch the quality to the
+ Filthy setting to enable saturation and drive for feedback taps.
+ 
+ The Filthy Drive parameter sets the amount of gain with which taps
+ in the feedback path are boosted into the saturation function. The
+ drive will make the signal louder before saturation and then lower
+ its volume again afterwards, this is done to not let the saturator
+ escalate the feedback path too much.
+ 
+ The mix amount of dry (unprocessed) and wet (processed) signal can
+ be set independently. The wet path contains only the delayed taps,
+ it does not contain the original signal at its original time.
+ 
+ Not much more to say about this. Have fun!
+
+// ----------------------------------------------------------------------------
+slider1:channels=0<0,3,{Stereo,Inverted,Ping-Pong,Mono}>Delay routing
+slider2:msDelay=500<0,3000,0.01>Tap time [ms]
+slider3:pctFeedback=50<0,100,0.01>Feedback [%]
+slider4:frqHighpass=250<20,1000,0.1>Feedback HP [Hz]
+slider5:frqLowpass=10000<2000,20000,10>Feedback LP [Hz]
+slider6:fdbDirty=1<0,1,{Clean,Filthy}>Feedback quality
+slider7:fdbDrive=6<0,24,0.01>Filthy drive [dB]
+slider8:dryWetMix=100<0,100,0.01>Dry mix [%]
+slider9:wetDryMix=100<0,100,0.01>Wet mix [%]
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  
+  // Constant used for filters
+  halfPi = $PI * 0.5;
+  
+  // Filter memory addressing
+  bwMemory = 0;  // First # of filter array
+  bwLength = 10; // Number of # to reserve per filter
+  
+  // New numSamples amount, used to check 
+  // if buffer requirements have changed.
+  newSamples = 0;
+  
+  // Converts dB values to float gain factors
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  
+  // Hyperbolic tangent approximation, used for soft clipping.
+  //
+  // Implemented after code posted by Antto on KVR
+  // https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function tanh (number) local (xa, x2, x3, x4, x7, res)
+  (
+    xa = abs(number); x2 = xa * xa; x3 = x2 * xa; x4 = x2 * x2; x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    sign(number) * res;
+  );
+  
+  // EQ CLASSES
+  //
+  // Implemented after Andrew Simper's State Variable Filter paper.
+  // https://cytomic.com/files/dsp/SvfLinearTrapOptimised2.pdf
+  //
+  function eqTick (sample) instance (v1, v2, v3, ic1eq, ic2eq)
+  (
+    v3 = sample - ic2eq; v1 = this.a1 * ic1eq + this.a2 * v3;
+    v2 = ic2eq + this.a2 * ic1eq + this.a3 * v3;
+    ic1eq = 2.0 * v1 - ic1eq; ic2eq = 2.0 * v2 - ic2eq;
+    (this.m0 * sample + this.m1 * v1 + this.m2 * v2);
+  );
+  //
+  // Highpass filter setup
+  //
+  function eqHP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan(halfPi * (Hz / srate)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 1.0; m1 = -k; m2 = -1.0;
+  );
+  //
+  // Lowpass filter setup
+  //
+  function eqLP (Hz, Q) instance (a1, a2, a3, m0, m1, m2) local (g, k)
+  (
+    g = tan(halfPi * (Hz / srate)); k = 1.0 / Q;
+    a1 = 1.0 / (1.0 + g * (g + k)); a2 = a1 * g; a3 = a2 * g;
+    m0 = 0.0; m1 = 0.0; m2 = 1.0;
+  );
+  
+  // Butterworth low pass filter with adjustable order
+  //
+  // Implemented after code from Exstrom Laboratories LLC
+  // http://www.exstrom.com/journal/sigproc/
+  //
+  function bwLP (Hz, SR, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack, type) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order; stack = order;
+    a1 = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order); type = 2.0; step = 0;
+    while (step < order)
+    (
+      r = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2 = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step] = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  //
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack, type) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + type * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  
+  // DOWNSAMPLING
+  //
+  // This is used to downsample the feedback path if set to dirty. Not
+  // sure if this is the best way to do it, but it works and adds some
+  // degradation to the signal, mostly from filtering.
+  //
+  function downSample (channel, amount) instance (ratio, hertz, address, preOrder, postOrder, lpPre, lpPost, counter) local (bwOffset, memOffset)
+  (
+    // Only do the following if actually reducing the sample rate
+    amount > 1 ?
+    (
+      // Fixed filter orders in this case, chose insufficient values so
+      // the degradation becomes emphasized and to minimize CPU cycles.
+      preOrder = 2;
+      postOrder = 4;
+      
+      // If the downsampling amount has changed since the last tick
+      amount != ratio ?
+      (
+        // Update downsampling properties
+        ratio = amount;        // 2, 3, 4, etc.
+        hertz = (srate / ratio) * 0.45; // LP cutoff near TARGET Nyquist
+        
+        // Memory addresses to store filters
+        bwOffset = (preOrder + postOrder) * bwLength;
+        memOffset = channel * 2 * bwOffset;
+        address = bwMemory + memOffset;
+        
+        // Clear all filter memory to avoid filters reading random data
+        // which could lead to clicks, pops and insensibly loud peaks.
+        memset(address, 0.0, 2 * bwOffset);
+        
+        // This filter cuts off everything above TARGET Nyquist from the
+        // SOURCE signal, before downsampling has happened.
+        lpPre.bwLP(hertz, srate, preOrder, address);
+        
+        // This filter cuts off everything above TARGET Nyquist from the
+        // TARGET signal, after downsampling has already taken place. It
+        // needs to run at project sample rate also, or it would run too
+        // slowly, which would result in a shifted cutoff frequency.
+        lpPost.bwLP(hertz, srate, postOrder, address + bwOffset);
+      );
+      
+      // Filter out any frequency content above TARGET Nyquist from the
+      // SOURCE signal, and include a ratio dependent gain compensation.
+      this = lpPre.bwTick(this * ratio);
+      
+      // Increment sample counter, this will count up to d/s ratio.
+      counter += 1;
+      
+      // If a new cycle starts, i.e. this sample is one that is kept
+      counter > ratio ?
+      (
+        // Reset the sample counter to 1
+        counter = 1;
+      ):
+      // If this is between [2,ratio], i.e. sample will be dropped
+      (
+        // Set sample value to 0 so it holds no frequency information
+        this = 0;
+      );
+      
+      // Run the post-downsampling filter on whatever remains. Filtering
+      // only the kept samples would result in aliasing and ringing.
+      this = lpPost.bwTick(this);
+    );
+  );
+  
+  // The heart of the beast - this is where the delay is processed.
+  // Putting this into its own function so that I can keep all the
+  // local variables out of the debugger list.
+  //
+  // Variables feedbackL and feedbackR need to stay non-local else
+  // the .downSample() calls create "copies" and show no effect.
+  //
+  function processDelay () local (readL, readR, isDirty, dsAmount)
+  (
+    // Increment read and write positions
+    readPosition  += 1;
+    writePosition += 1;
+    
+    // This is a neat little trick for things like index counters.
+    // Calculating the modulo of a smaller value divided by a larger
+    // value will always return the smaller value. When the value is
+    // large enough to equal the value it is divided by, there won't
+    // be a remainder anymore, as the division result is now a whole
+    // number. This means the result of number % sameNumber is zero.
+    // So this modulo trick can be used to set a counter back to nil
+    // whenever it reaches the actual number it is being divided by.
+    // This is definitely faster than having two full if-branches to
+    // check the value of these two counters.
+    readPosition  %= numSamples;
+    writePosition %= numSamples;
+    
+    // The delay tap that will be sent to the output is the same as
+    // the one that will be copied as feedback at write position so
+    // extract the delay tap value from the read position now.
+    readL = feedbackL = feedback * historyL[readPosition];
+    readR = feedbackR = feedback * historyR[readPosition];
+    
+    // Convenience variables, avoid repeated evaluations
+    isDirty  = (fdbDirty == 1) ? 1 : 0;
+    dsAmount = isDirty * 8; // Amount of feedback path downsampling
+    
+    // Downsample the feedback signal, but only if dirty path active.
+    feedbackL.downSample(0, dsAmount);
+    feedbackR.downSample(1, dsAmount);
+    
+    // If the feedback path highpass filter is active (clean + filthy)
+    frqHighpass > 20 ?
+    (
+      // Run the highpass filters over the feedback samples
+      feedbackL = hpL.eqTick(feedbackL);
+      feedbackR = hpR.eqTick(feedbackR);
+    );
+    
+    // If the feedback path lowpass filter is active (clean + filthy)
+    frqLowpass < 20000 ?
+    (
+      // Run the lowpass filters over the feedback samples
+      feedbackL = lpL.eqTick(feedbackL);
+      feedbackR = lpR.eqTick(feedbackR);
+    );
+    
+    // If the filthy feedback path with saturation is active
+    isDirty ?
+    (
+      // Run the feedback signal through the saturation function.
+      // This will pre-boost the feedback into the saturator, and
+      // then attenuate the saturated signal again to avoid nasty
+      // loudness increases. Doing this will inherently lower the
+      // overall volume of the filthy driven feedback signal, but
+      // that's not really a bad thing as it keeps the saturation
+      // from becoming overwhelmingly loud or escalating feedback.
+      feedbackL = tanh(feedbackL * drive) / drive;
+      feedbackR = tanh(feedbackR * drive) / drive;
+    );
+    
+    // Simple stereo operation, signals are delayed where they happen
+    channels == 0 ?
+    (
+      historyL[writePosition] = spl0 + feedbackL;
+      historyR[writePosition] = spl1 + feedbackR;
+      
+      spl0 = readL;
+      spl1 = readR;
+    );
+    
+    // Inverted stereo operation, signals are delayed on the opposite
+    // side of where they happened
+    channels == 1 ?
+    (
+      historyL[writePosition] = spl1 + feedbackL;
+      historyR[writePosition] = spl0 + feedbackR;
+      
+      spl0 = readL;
+      spl1 = readR;
+    );
+    
+    // Ping-pong stereo operation, signals are constantly reflected
+    // back and forth between opposite channels
+    channels == 2 ?
+    (
+      historyL[writePosition] = spl0 + feedbackR;
+      historyR[writePosition] = spl1 + feedbackL;
+      
+      spl0 = readR;
+      spl1 = readL;
+    );
+    
+    // Mono operation, samples of both channels are mixed together
+    // into one signal.
+    channels == 3 ?
+    (
+      historyL[writePosition] = (spl0 + feedbackL) * 0.5 + (spl1 + feedbackR) * 0.5;
+      historyR[writePosition] = historyL[writePosition];
+      
+      spl0 = readL;
+      spl1 = readR;
+    );
+    
+    // Wet amount in output
+    wetMix < 1 ?
+    (
+      spl0 *= wetMix;
+      spl1 *= wetMix;
+    );
+    
+    // Dry amount in output
+    dryMix > 0 ?
+    (
+      spl0 += dryMix * dryL;
+      spl1 += dryMix * dryR;
+    );
+  );
+
+@slider
+  
+  // Number of history samples required for delay time
+  newSamples = ceil(0.001 * msDelay * srate);
+  
+  // Check if the number of required samples has changed, and only then
+  // start resetting, redimensioning, reinitializing the delay buffers.
+  // This check has to be done so that not every slider change triggers
+  // a reset and causes temporary silence.
+  //
+  newSamples != numSamples ?
+  (
+    // Update the number of required delay buffer samples
+    numSamples = newSamples;
+    
+    // Allow freeing all the memory that was previously used. There's no
+    // guarantee that this will actually happen, but it might.
+    freembuf(0);
+  
+    // Reset the history arrays to the required memory dimensions. This
+    // will let the historyL array start at address 0, and historyR will
+    // start at historyL's memory address but offset by the total number
+    // of history samples per channel, leaving historyL enough places in
+    // between to fit all its values in there.
+    historyL = 10000;
+    historyR = historyL + numSamples;
+  
+    // Set these indices with a -1 offset, so they're incremented to the
+    // actually correct positions (0 and lastSample) in the next cycle.
+    readPosition = -1;
+    writePosition = numSamples - 2;
+  );
+  
+  // Feedback amount - this is how loud the delay taps will be repeated.
+  // The higher this value is, the longer will the tail of taps get. The
+  // lower this value is, the fewer taps will be repeated since they are
+  // faded out faster.
+  feedback = pctFeedback * 0.01;
+  
+  // Feedback path filter setup, these will get a small
+  // resonance increase if dirty feedback is activated.
+  hpL.eqHP(frqHighpass, 0.75 + (fdbDirty * 0.5));
+  hpR.eqHP(frqHighpass, 0.75 + (fdbDirty * 0.5));
+  lpL.eqLP(frqLowpass,  0.75 + (fdbDirty * 0.5));
+  lpR.eqLP(frqLowpass,  0.75 + (fdbDirty * 0.5));
+  
+  // Feedback boost factor - if filthy feedback is active, this value is
+  // the gain at which the feedback signal is boosted into the saturator.
+  drive = dBToGain(fdbDrive);
+  
+  // Dry/wet mixing amounts, converted from percentages to [0,1] scale.
+  wetMix = wetDryMix * 0.01;
+  dryMix = dryWetMix * 0.01;
+
+@sample
+  
+  // Store undprocessed samples for later dry/wet mixing
+  dryL = spl0;
+  dryR = spl1;
+  
+  // Only do delay processing if delay time > 0
+  msDelay > 0 ? processDelay();

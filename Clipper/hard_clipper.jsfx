@@ -1,0 +1,156 @@
+desc:       Hard Clipper
+version:    1.8.2
+author:     chokehold
+tags:       processing gain amplitude clipper distortion saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/hard_clipper.png
+about:
+ # Hard Clipper
+ 
+ Simple hard clipping that will rigorously "chop off" any
+ signal peaks that shoot above the set ceiling.
+ 
+ This clipper has hardcoded (but optional) 4x oversampling
+ so it should not cause a very hefty CPU hit while active.
+ It doesn't "save" the signal, just makes things a little
+ smoother, but it comes at the cost of losing true 0 dBfs
+ peak safety from all the filtering. If you need reliable
+ 0 dBfs peak safety, then load another clipper after this,
+ or just simply disable oversampling.
+ 
+ Since hard clipping causes lots of aliasing, I've added
+ a DC Blocker, can't hurt to have it ready, just in case.
+
+// ----------------------------------------------------------------------------
+slider1:dBCeil=0<-48, 0,0.01> Ceiling dBfs
+slider2:dBGain=0<  0,48,0.01> Boost dB
+slider3:ovs=0<0,1,{Off,On}> Oversampling
+slider4:blocker=0<0,1,{Enabled,Disabled}> DC Blocker
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  
+  // Buffer for upsampled samples
+  ups = 100000;
+  
+  // Decibel to gain factor conversion
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  
+  // Hard clipping function with ceiling
+  function hardclip ()
+  (
+    this = max(-ceiling, min(ceiling, this))
+  );
+  
+  // DC Blocker to remove near-static frequency content
+  // that would otherwise "offset" the waveform.
+  function dcBlocker () instance (stateIn, stateOut)
+  (
+    stateOut *= 0.99988487;
+    stateOut += this - stateIn;
+    stateIn = this;
+    this = stateOut;
+  );
+  
+  // Filter used for up- and downsampling
+  function bwLP (Hz, SR, order, memOffset) instance (a, d1, d2, w0, w1, w2, stack) local (a1, a2, ro4, step, r, ar, ar2, s2, rs2)
+  (
+    a  = memOffset; d1 = a+order; d2 = d1+order; w0 = d2+order; w1 = w0+order; w2 = w1+order;
+    stack = order; a1  = tan($PI * (Hz / SR)); a2  = sqr(a1); ro4 = 1.0 / (4.0 * order);
+    step = 0; while (step < order)
+    (
+      r   = sin($PI * (2.0 * step + 1.0) * ro4); ar2 = 2.0 * a1 * r; s2  = a2 + ar2 + 1.0; rs2 = 1.0 / s2;
+      a[step]  = a2 * rs2; d1[step] = 2.0 * (1.0 - a2) * rs2; d2[step] = -(a2 - ar2 + 1.0) * rs2; step += 1;
+    );
+  );
+  
+  function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack) local (output, step)
+  (
+    output = sample; step = 0;
+    while (step < stack)
+    (
+      w0[step] = d1[step] * w1[step] + d2[step] * w2[step] + output;
+      output = a[step] * (w0[step] + 2.0 * w1[step] + w2[step]);
+      w2[step] = w1[step]; w1[step] = w0[step]; step += 1;
+    );
+    output;
+  );
+  
+  // Fixed 4x oversampling
+  ovsRate = srate * 4;
+  
+  upFilterL.bwLP(22050, ovsRate, 2, 200000);
+  upFilterR.bwLP(22050, ovsRate, 2, 201000);
+  
+  dnFilterL.bwLP(22000, ovsRate, 4, 202000);
+  dnFilterR.bwLP(22000, ovsRate, 4, 203000);  
+
+@slider
+
+  ceiling = dBToGain(dBCeil);
+  gain    = dBToGain(dBGain);
+
+@sample
+  
+  spl0 *= gain;
+  spl1 *= gain;
+  
+  // Do the following only if oversampling is happening
+  ovs == 1 ?
+  (
+    spl0 = upFilterL.bwTick(spl0 * 4);
+    spl1 = upFilterR.bwTick(spl1 * 4);
+    
+    counter = 0;
+    while (counter < 3)
+    (
+      ups[counter]   = upFilterL.bwTick(0);
+      ups[counter+4] = upFilterR.bwTick(0);
+      counter += 1;
+    );
+  );
+  
+  spl0.hardclip();
+  spl1.hardclip();
+  
+  // And yet another block of stuff that has to be processed when
+  // oversamplign is activated
+  ovs == 1 ?
+  (
+    counter = 0;
+    while (counter < 3)
+    (
+      orly1 = ups[counter];
+      orly1.hardclip();
+      ups[counter] = orly1;
+      
+      orly2 = ups[counter+4];
+      orly2.hardclip();
+      ups[counter+4] = orly2;
+      
+      counter += 1;
+    );
+    
+    spl0 = dnFilterL.bwTick(spl0);
+    spl1 = dnFilterR.bwTick(spl1);
+    
+    counter = 0;
+    while (counter < 3)
+    (
+      ups[counter]   = dnFilterL.bwTick(ups[counter]);
+      ups[counter+4] = dnFilterR.bwTick(ups[counter+4]);
+      counter += 1;
+    );
+  );
+  
+  // If DC blocking enabled
+  blocker == 0 ?
+  (
+    // Run the DC blocker on each sample
+    spl0.dcBlocker();
+    spl1.dcBlocker();
+  );

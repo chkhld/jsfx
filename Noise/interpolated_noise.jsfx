@@ -1,0 +1,193 @@
+desc:       Interpolated Noise
+version:    1.8.2
+author:     chokehold
+tags:       generator synthesis noise
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/interpolated_noise.png
+about:
+ # Interpolated Noise
+ 
+ Creates various characters of filtered stereo noise.
+ 
+ New samples are not just randomly generated and then
+ shot through a set of "voicing filters", but they're
+ calculated by interpolation between multiple old and
+ new random values, as well as what I would call slew
+ limiting. Restricting the ramping speed for changes
+ will inherently filter out higher frequencies.
+ 
+ These noises are layered in randomness, meaning they
+ will generate fast "clouds of randomness" which then
+ move along slower "trails of randomness". Send them
+ through a goniometer/Lissajous scope and you'll see.
+ 
+ I find these noise characters very calm and pleasing,
+ and overall a lot more natural and organic than dumb
+ filtered white noise. However, they are unstable in
+ volume and stereo field, which adds to the naturally
+ chaotic sound but might not always be desirable.
+ 
+ I tried to level them all around 0 dBfs RMS.
+
+// ----------------------------------------------------------------------------
+slider1:0<0,2,1{Linear,Cosine,Cubic}> Type
+slider2:0<-144, 0,0.01> Level dBfs RMS
+
+in_pin:left input
+in_pin:right input
+out_pin:left output
+out_pin:right output
+
+@init
+  m_pi = 3.14159265358;
+  
+  stateL = 0.0;
+  stateR = 0.0;
+  
+  historyL0 = 0.0;
+  historyL1 = 0.0;
+  historyL2 = 0.0;
+  historyL3 = 0.0;
+  
+  historyR0 = 0.0;
+  historyR1 = 0.0;
+  historyR2 = 0.0;
+  historyR3 = 0.0;
+  
+  inertiaLin = 0.000000025;
+  makeupLin  = 3.5481339;
+  slopeLinL  = 0.015848931;
+  slopeLinR  = 0.015848931;
+  
+  inertiaCos = 0.00000001;
+  makeupCos  = 35.481339;
+  slopeCosL  = 0.01;
+  slopeCosR  = 0.01;
+  ceilingCos = 0.01;
+  
+  inertiaCub = 0.00000001;
+  makeupCub  = 3.981071705535;
+  slopeCubL  = 0.00316227766;
+  slopeCubR  = 0.00316227766;
+  ceilingCub = 0.0794328235;
+  
+  dcScale    = 0.9998848736286163330078125;
+  dcLastInL  = 0.0;
+  dcLastInR  = 0.0;
+  dcLastOutL = 0.0;
+  dcLastOutR = 0.0;
+
+  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function clamp (number, low, high) (max(low, min(high, number)));
+  function random (limit) (rand(2.0 * limit) - limit);
+  
+  function linear ()
+  (
+    slopeLinL += clamp(random(1.0), -inertiaLin, inertiaLin);
+    slopeLinL  = clamp(slopeLinL, inertiaLin, 1.0);
+    
+    slopeLinR += clamp(random(1.0), -inertiaLin, inertiaLin);
+    slopeLinR  = clamp(slopeLinR, inertiaLin, 1.0);
+    
+    sampleL = random(1.0);
+    sampleR = random(1.0);
+    
+    stateL = stateL * (1.0 - slopeLinL) + sampleL * slopeLinL;
+    stateR = stateR * (1.0 - slopeLinR) + sampleR * slopeLinR;
+    
+    spl0 += stateL * makeupLin * level;
+    spl1 += stateR * makeupLin * level;
+  );
+  
+  function cosine ()
+  (
+    slopeCosL += clamp(random(1.0), -inertiaCos, inertiaCos);
+    slopeCosL  = clamp(slopeCosL, inertiaCos, 1.0);
+    
+    slopeCosR += clamp(random(1.0), -inertiaCos, inertiaCos);
+    slopeCosR  = clamp(slopeCosL, inertiaCos, 1.0);
+    
+    sampleL = random(1.0);
+    sampleR = random(1.0);
+    
+    adjustL = (1.0 - cos(slopeCosL * m_pi)) * 0.5;
+    adjustR = (1.0 - cos(slopeCosR * m_pi)) * 0.5;
+    
+    stateL = stateL * (1.0 - adjustL) + sampleL * adjustL;
+    stateR = stateR * (1.0 - adjustR) + sampleR * adjustR;
+    
+    stateL = clamp(stateL, -ceilingCos, ceilingCos);
+    stateR = clamp(stateR, -ceilingCos, ceilingCos);
+    
+    spl0 += stateL * makeupCos * level;
+    spl1 += stateR * makeupCos * level;
+  );
+  
+  function cubic ()
+  (
+    historyL0 = historyL2;
+    historyL1 = historyL3;
+    historyL2 = random(1.0);
+    historyL3 = random(1.0);
+    
+    historyR0 = historyR2;
+    historyR1 = historyR3;
+    historyR2 = random(1.0);
+    historyR3 = random(1.0);
+    
+    slopeCubL += clamp(random(1.0), -inertiaCub, inertiaCub);
+    slopeCubL  = clamp(slopeCubL, inertiaCub, 1.0);
+    
+    slopeCubR += clamp(random(1.0), -inertiaCub, inertiaCub);
+    slopeCubR  = clamp(slopeCubR, inertiaCub, 1.0);
+    
+    historyL0 *= 0.4;
+    historyL3 *= 0.6;
+    
+    historyR0 *= 0.4;
+    historyR3 *= 0.6;
+    
+    a2L = historyL2 - historyL0;
+    a0L = historyL3 - a2L + historyL1;
+    a1L = historyL0 - historyL1 - a0L;
+    a3L = historyL1;
+    
+    a2R = historyR2 - historyR0;
+    a0R = historyR3 - a2R + historyR1;
+    a1R = historyR0 - historyR1 - a0R;
+    a3R = historyR1;
+    
+    slope2L = slopeCubL * slopeCubL;
+    slope2R = slopeCubR * slopeCubR;
+    
+    stateL = a0L * slope2L * slopeCubL + a1L * slope2L + a2L * slopeCubL + a3L;
+    stateR = a0R * slope2R * slopeCubR + a1R * slope2R + a2R * slopeCubR + a3R;
+    
+    stateL = clamp(stateL, -ceilingCub, ceilingCub);
+    stateR = clamp(stateR, -ceilingCub, ceilingCub);
+    
+    historyL3 = stateL;
+    historyR3 = stateR;
+    
+    spl0 += stateL * makeupCub * level;
+    spl1 += stateR * makeupCub * level;
+  );
+  
+  function dcBlocker ()
+  (
+    dcLastOutL = (dcLastOutL * dcScale) + spl0 - dcLastInL;
+    dcLastOutR = (dcLastOutR * dcScale) + spl1 - dcLastInR;
+    
+    dcLastInL  = spl0;
+    dcLastInR  = spl1;
+    
+    spl0 = dcLastOutL;
+    spl1 = dcLastOutR;
+  );
+
+@slider
+  level = dBToGain(slider2);
+
+@sample
+  (slider1 == 0) ? linear() : ((slider1 == 1) ? cosine() : cubic());
+  (slider1  > 0) ? dcBlocker();

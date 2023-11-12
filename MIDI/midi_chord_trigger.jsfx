@@ -1,0 +1,598 @@
+desc:       MIDI Chord Trigger
+version:    1.8.2
+author:     chokehold
+tags:       midi utility chords
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/midi_chord_trigger.png
+about:
+ # MIDI Chord Trigger
+ 
+ The idea is to have a single playable octave of root notes, and control the
+ type of chord these root notes trigger, as well as the MIDI octave on which
+ these chords are triggered, from two other sections on the keyboard.
+ 
+ With this, it's possible to trigger all kinds of chords very easily just by
+ using a few simple key switches, which is very convenient when playing e.g.
+ piano libraries or orchestral ensemble patches, all without actually having
+ any knowledge of how to play those instruments.
+ 
+ There are 12 freely assignable chord switch slots in the bottom half of the
+ interface, each of which can be selected by pressing the corresponding note
+ in the keyboard range set up in the "switch chord type" dropdown. Press the
+ D# key in the MIDI octave set up in "switch chord type" and the next played
+ note will trigger the chord type set in the D# (4th) chord switch slot.
+ 
+ So use the "chord switch" slots first to set up the selection of chords you
+ want to be available for you to switch and play. Press a key in the "switch
+ chord type" MIDI key range to pick the chord future root notes should play.
+ Use the keys in the "shift root octave" range to shift in which MIDI octave
+ following root notes should be played. Finally, use the keys from the "play
+ root notes" key range to trigger the defined chord type based on the played
+ root note in the selected MIDI octave.
+ 
+ TL;DR: Use one MIDI octave to switch between pre-selected chord types, then
+ use another octave to shift the MIDI octave to play them in, finally play a
+ notes in a third octave to actually trigger the chords.
+ 
+ PLEASE NOTE: The interface doesn't prohibit setting all 3 key switch ranges
+              up to sit in the same MIDI octave. Please DO NOT DO THIS! Make
+              sure that all 3 key switch ranges are set up in different MIDI
+              ocatves, else there will be undefined (and definitely corrupt)
+              behaviour.
+
+// ----------------------------------------------------------------------------
+slider1:key_region_chords=0<0,9,{C-1  through  B-1,C0  through  B0,C1  through  B1,C2  through  B2,C3  through  B3,C4  through  B4,C5  through  B5,C6  through  B6,C7  through  B7,C8  through  B8}>Switch Chord Type
+slider2:key_region_octave=1<0,9,{C-1  through  A-1,C0  through  A0,C1  through  A1,C2  through  A2,C3  through  A3,C4  through  A4,C5  through  A5,C6  through  A6,C7  through  A7,C8  through  A8}>Shift Root Octave
+slider3:key_region_notes= 2<0,9,{C-1  through  C0,C0  through  C1,C1  through  C2,C2  through  C3,C3  through  C4,C4  through  C5,C5  through  C6,C6  through  C7,C7  through  C8,C8  through  C9}>Play Root Notes
+slider4
+slider5:chord_switch_monitor=0<0,11,{C,C#,D,D#,E,F,F#,G,G#,A,A#,B}>Current Chord Switch
+slider6:chord_type_monitor=0<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Current Chord Type
+slider7:root_octave_monitor=4<0,9,{C-1,C0,C1,C2,C3,C4,C5,C6,C7,C8}>Current Root Octave
+slider8:root_note_monitor=0<0,12,{C,C#,D,D#,E,F,F#,G,G#,A,A#,B,C+1}>Current Root Note
+slider9
+slider10:chord_type_0=  0<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / C
+slider11:chord_type_1=  3<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / C#
+slider12:chord_type_2=  6<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / D
+slider13:chord_type_3=  9<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / D#
+slider14:chord_type_4= 12<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / E
+slider15:chord_type_5= 15<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / F
+slider16:chord_type_6= 18<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / F#
+slider17:chord_type_7= 21<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / G
+slider18:chord_type_8= 24<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / G#
+slider19:chord_type_9= 27<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / A
+slider20:chord_type_10=28<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / A#
+slider21:chord_type_11=29<0,33,{Major,Major 1st inversion,Major 2nd inversion,Minor,Minor 1st inversion,Minor 2nd inversion,Diminished,Diminished 1st inversion,Diminished 2nd inversion,Augmented,Augmented 1st inversion,Augmented 2nd inversion,Sus2,Sus2 1st inversion,Sus2 2nd inversion,Sus4,Sus4 1st inversion,Sus4 2nd inversion,Major 7th,Major 7th 1st inversion,Major 7th 2nd inversion,Minor 7th,Minor 7th 1st inversion,Minor 7th 2nd inversion,Dominant 7th,Dominant 7th 1st inversion,Dominant 7th 2nd inversion,Major 9th,Minor 9th,Dominant 9th,Major 11th,Minor 11th,Dominant 11th,Guitar power chord}>Chord switch / B
+
+in_pin:none
+out_pin:none
+
+@init
+  
+  // Various MIDI codes for better readability
+  MIDI_note_off = $x80;
+  MIDI_note_on  = $x90;
+  MIDI_all_off  = $x7B;
+  
+  // Maximum number of notes per chord type
+  chord_notes = 6;
+  
+  // Array memory address reservation
+  chord_types   = 0;  // Buffer for user-selected chord types 1-12
+  playing_notes = 12; // Buffer for remembering which MIDI notes are currently playing
+  chords        = 2000; // Chord harmonic offsets ROM
+  
+  // Update chord types from user input
+  function updateChordTypes ()
+  (
+    chord_types[0]  = chord_type_0  * chord_notes;
+    chord_types[1]  = chord_type_1  * chord_notes;
+    chord_types[2]  = chord_type_2  * chord_notes;
+    chord_types[3]  = chord_type_3  * chord_notes;
+    chord_types[4]  = chord_type_4  * chord_notes;
+    chord_types[5]  = chord_type_5  * chord_notes;
+    chord_types[6]  = chord_type_6  * chord_notes;
+    chord_types[7]  = chord_type_7  * chord_notes;
+    chord_types[8]  = chord_type_8  * chord_notes;
+    chord_types[9]  = chord_type_9  * chord_notes;
+    chord_types[10] = chord_type_10 * chord_notes;
+    chord_types[11] = chord_type_11 * chord_notes;
+    
+    // Update chord type
+    chord_type = chord_types[chord_switch_nr];
+  );
+  
+  // Octave key switches MIDI notes 0/C -1 to 9/A -1
+  ks_octave_lo = 0;
+  ks_octave_hi = 9;
+  
+  // Chords key switches MIDI notes 12/C0 to 23/B0
+  ks_chord_lo = 12;
+  ks_chord_hi = 23;
+  
+  // Playback keys using MIDI notes 24/C1 - 36/C2 (12+1 to include octave of root)
+  ks_root_lo = 24;
+  ks_root_hi = 36;
+  
+  // Currently selected chord switch slot (default 0)
+  chord_switch_nr = 0;
+  
+  // Currently selected chord type (default Major)
+  chord_type = chord_types[chord_switch_nr];
+  
+  // Currently selected root octave (default C4)
+  root_octave = 4;
+  note_octave = root_octave * 12;
+  
+  // Marker for empty note offset in a chord
+  none = -1;
+  
+  // Address offsets for notes in a chord
+  root = 0;
+  har1 = 1;
+  har2 = 2;
+  har3 = 3;
+  har4 = 4;
+  har5 = 5;
+  
+  // Chord type address offsets
+  //
+  chord_major =              0 * chord_notes;
+  chord_major_inv1 =         1 * chord_notes;
+  chord_major_inv2 =         2 * chord_notes;
+  chord_minor =              3 * chord_notes;
+  chord_minor_inv1 =         4 * chord_notes;
+  chord_minor_inv2 =         5 * chord_notes;
+  chord_diminished =         6 * chord_notes;
+  chord_diminished_inv1 =    7 * chord_notes;
+  chord_diminished_inv2 =    8 * chord_notes;
+  chord_augmented =          9 * chord_notes;
+  chord_augmented_inv1 =    10 * chord_notes;
+  chord_augmented_inv2 =    11 * chord_notes;
+  chord_sus2 =              12 * chord_notes;
+  chord_sus2_inv1 =         13 * chord_notes;
+  chord_sus2_inv2 =         14 * chord_notes;
+  chord_sus4 =              15 * chord_notes;
+  chord_sus4_inv1 =         16 * chord_notes;
+  chord_sus4_inv2 =         17 * chord_notes;
+  chord_major_7th =         18 * chord_notes;
+  chord_major_7th_inv1 =    19 * chord_notes;
+  chord_major_7th_inv2 =    20 * chord_notes;
+  chord_minor_7th =         21 * chord_notes;
+  chord_minor_7th_inv1 =    22 * chord_notes;
+  chord_minor_7th_inv2 =    23 * chord_notes;
+  chord_dominant_7th =      24 * chord_notes;
+  chord_dominant_7th_inv1 = 25 * chord_notes;
+  chord_dominant_7th_inv2 = 26 * chord_notes;
+  chord_major_9th =         27 * chord_notes;
+  chord_minor_9th =         28 * chord_notes;
+  chord_dominant_9th =      29 * chord_notes;
+  chord_major_11th =        30 * chord_notes;
+  chord_minor_11th =        31 * chord_notes;
+  chord_dominant_11th =     32 * chord_notes;
+  chord_power =             33 * chord_notes;
+  //
+  // Major
+  chords[chord_major + root] = 0;
+  chords[chord_major + har1] = 4;
+  chords[chord_major + har2] = 7;
+  chords[chord_major + har3] = none;
+  chords[chord_major + har4] = none;
+  chords[chord_major + har5] = none;
+  //
+  // Major 1st inversion
+  chords[chord_major_inv1 + root] = none;
+  chords[chord_major_inv1 + har1] = 4;
+  chords[chord_major_inv1 + har2] = 7;
+  chords[chord_major_inv1 + har3] = 12;
+  chords[chord_major_inv1 + har4] = none;
+  chords[chord_major_inv1 + har5] = none;
+  //
+  // Major 2nd inversion
+  chords[chord_major_inv2 + root] = none;
+  chords[chord_major_inv2 + har1] = none;
+  chords[chord_major_inv2 + har2] = 7;
+  chords[chord_major_inv2 + har3] = 12;
+  chords[chord_major_inv2 + har4] = 16;
+  chords[chord_major_inv2 + har5] = none;
+  //
+  // Minor
+  chords[chord_minor + root] = 0;
+  chords[chord_minor + har1] = 3;
+  chords[chord_minor + har2] = 7;
+  chords[chord_minor + har3] = none;
+  chords[chord_minor + har4] = none;
+  chords[chord_minor + har5] = none;
+  //
+  // Minor 1st inversion
+  chords[chord_minor_inv1 + root] = none;
+  chords[chord_minor_inv1 + har1] = 3;
+  chords[chord_minor_inv1 + har2] = 7;
+  chords[chord_minor_inv1 + har3] = 12;
+  chords[chord_minor_inv1 + har4] = none;
+  chords[chord_minor_inv1 + har5] = none;
+  //
+  // Minor 2nd inversion
+  chords[chord_minor_inv2 + root] = none;
+  chords[chord_minor_inv2 + har1] = none;
+  chords[chord_minor_inv2 + har2] = 7;
+  chords[chord_minor_inv2 + har3] = 12;
+  chords[chord_minor_inv2 + har4] = 15;
+  chords[chord_minor_inv2 + har5] = none;
+  //
+  // Diminished
+  chords[chord_diminished + root] = 0;
+  chords[chord_diminished + har1] = 3;
+  chords[chord_diminished + har2] = 6;
+  chords[chord_diminished + har3] = none;
+  chords[chord_diminished + har4] = none;
+  chords[chord_diminished + har5] = none;
+  //
+  // Diminished 1st inversion
+  chords[chord_diminished_inv1 + root] = none;
+  chords[chord_diminished_inv1 + har1] = 3;
+  chords[chord_diminished_inv1 + har2] = 6;
+  chords[chord_diminished_inv1 + har3] = 12;
+  chords[chord_diminished_inv1 + har4] = none;
+  chords[chord_diminished_inv1 + har5] = none;
+  //
+  // Diminished 2nd inversion
+  chords[chord_diminished_inv2 + root] = none;
+  chords[chord_diminished_inv2 + har1] = none;
+  chords[chord_diminished_inv2 + har2] = 6;
+  chords[chord_diminished_inv2 + har3] = 12;
+  chords[chord_diminished_inv2 + har4] = 15;
+  chords[chord_diminished_inv2 + har5] = none;
+  //
+  // Augmented
+  chords[chord_augmented + root] = 0;
+  chords[chord_augmented + har1] = 4;
+  chords[chord_augmented + har2] = 8;
+  chords[chord_augmented + har3] = none;
+  chords[chord_augmented + har4] = none;
+  chords[chord_augmented + har5] = none;
+  //
+  // Augmented 1st inversion
+  chords[chord_augmented_inv1 + root] = none;
+  chords[chord_augmented_inv1 + har1] = 4;
+  chords[chord_augmented_inv1 + har2] = 8;
+  chords[chord_augmented_inv1 + har3] = 12;
+  chords[chord_augmented_inv1 + har4] = none;
+  chords[chord_augmented_inv1 + har5] = none;
+  //
+  // Augmented 2nd inversion
+  chords[chord_augmented_inv2 + root] = none;
+  chords[chord_augmented_inv2 + har1] = none;
+  chords[chord_augmented_inv2 + har2] = 8;
+  chords[chord_augmented_inv2 + har3] = 12;
+  chords[chord_augmented_inv2 + har4] = 16;
+  chords[chord_augmented_inv2 + har5] = none;
+  //
+  // Sus2
+  chords[chord_sus2 + root] = 0;
+  chords[chord_sus2 + har1] = 2;
+  chords[chord_sus2 + har2] = 7;
+  chords[chord_sus2 + har3] = none;
+  chords[chord_sus2 + har4] = none;
+  chords[chord_sus2 + har5] = none;
+  //
+  // Sus2 1st inversion
+  chords[chord_sus2_inv1 + root] = none;
+  chords[chord_sus2_inv1 + har1] = 2;
+  chords[chord_sus2_inv1 + har2] = 7;
+  chords[chord_sus2_inv1 + har3] = 12;
+  chords[chord_sus2_inv1 + har4] = none;
+  chords[chord_sus2_inv1 + har5] = none;
+  //
+  // Sus2 2nd inversion
+  chords[chord_sus2_inv2 + root] = none;
+  chords[chord_sus2_inv2 + har1] = none;
+  chords[chord_sus2_inv2 + har2] = 7;
+  chords[chord_sus2_inv2 + har3] = 12;
+  chords[chord_sus2_inv2 + har4] = 14;
+  chords[chord_sus2_inv2 + har5] = none;
+  //
+  // Sus4
+  chords[chord_sus4 + root] = 0;
+  chords[chord_sus4 + har1] = 5;
+  chords[chord_sus4 + har2] = 7;
+  chords[chord_sus4 + har3] = none;
+  chords[chord_sus4 + har4] = none;
+  chords[chord_sus4 + har5] = none;
+  //
+  // Sus4 1st inversion
+  chords[chord_sus4_inv1 + root] = none;
+  chords[chord_sus4_inv1 + har1] = 5;
+  chords[chord_sus4_inv1 + har2] = 7;
+  chords[chord_sus4_inv1 + har3] = 12;
+  chords[chord_sus4_inv1 + har4] = none;
+  chords[chord_sus4_inv1 + har5] = none;
+  //
+  // Sus4 2nd inversion
+  chords[chord_sus4_inv2 + root] = none;
+  chords[chord_sus4_inv2 + har1] = none;
+  chords[chord_sus4_inv2 + har2] = 7;
+  chords[chord_sus4_inv2 + har3] = 12;
+  chords[chord_sus4_inv2 + har4] = 17;
+  chords[chord_sus4_inv2 + har5] = none;
+  //
+  // Major 7th
+  chords[chord_major_7th + root] = 0;
+  chords[chord_major_7th + har1] = 4;
+  chords[chord_major_7th + har2] = 7;
+  chords[chord_major_7th + har3] = 11;
+  chords[chord_major_7th + har4] = none;
+  chords[chord_major_7th + har5] = none;
+  //
+  // Major 7th 1st inversion
+  chords[chord_major_7th_inv1 + root] = none;
+  chords[chord_major_7th_inv1 + har1] = 4;
+  chords[chord_major_7th_inv1 + har2] = 7;
+  chords[chord_major_7th_inv1 + har3] = 11;
+  chords[chord_major_7th_inv1 + har4] = 12;
+  chords[chord_major_7th_inv1 + har5] = none;
+  //
+  // Major 7th 2nd inversion
+  chords[chord_major_7th_inv2 + root] = none;
+  chords[chord_major_7th_inv2 + har1] = none;
+  chords[chord_major_7th_inv2 + har2] = 7;
+  chords[chord_major_7th_inv2 + har3] = 11;
+  chords[chord_major_7th_inv2 + har4] = 12;
+  chords[chord_major_7th_inv2 + har5] = 16;
+  //
+  // Minor 7th
+  chords[chord_minor_7th + root] = 0;
+  chords[chord_minor_7th + har1] = 3;
+  chords[chord_minor_7th + har2] = 7;
+  chords[chord_minor_7th + har3] = 10;
+  chords[chord_minor_7th + har4] = none;
+  chords[chord_minor_7th + har5] = none;
+  //
+  // Minor 7th 1st inversion
+  chords[chord_minor_7th_inv1 + root] = none;
+  chords[chord_minor_7th_inv1 + har1] = 3;
+  chords[chord_minor_7th_inv1 + har2] = 7;
+  chords[chord_minor_7th_inv1 + har3] = 10;
+  chords[chord_minor_7th_inv1 + har4] = 12;
+  chords[chord_minor_7th_inv1 + har5] = none;
+  //
+  // Minor 7th 2nd inversion
+  chords[chord_minor_7th_inv2 + root] = none;
+  chords[chord_minor_7th_inv2 + har1] = none;
+  chords[chord_minor_7th_inv2 + har2] = 7;
+  chords[chord_minor_7th_inv2 + har3] = 10;
+  chords[chord_minor_7th_inv2 + har4] = 12;
+  chords[chord_minor_7th_inv2 + har5] = 15;
+  //
+  // Dominant 7th
+  chords[chord_dominant_7th + root] = 0;
+  chords[chord_dominant_7th + har1] = 4;
+  chords[chord_dominant_7th + har2] = 7;
+  chords[chord_dominant_7th + har3] = 10;
+  chords[chord_dominant_7th + har4] = none;
+  chords[chord_dominant_7th + har5] = none;
+  //
+  // Dominant 7th 1st inversion
+  chords[chord_dominant_7th_inv1 + root] = none;
+  chords[chord_dominant_7th_inv1 + har1] = 4;
+  chords[chord_dominant_7th_inv1 + har2] = 7;
+  chords[chord_dominant_7th_inv1 + har3] = 10;
+  chords[chord_dominant_7th_inv1 + har4] = 12;
+  chords[chord_dominant_7th_inv1 + har5] = none;
+  //
+  // Dominant 7th 2nd inversion
+  chords[chord_dominant_7th_inv2 + root] = none;
+  chords[chord_dominant_7th_inv2 + har1] = none;
+  chords[chord_dominant_7th_inv2 + har2] = 7;
+  chords[chord_dominant_7th_inv2 + har3] = 10;
+  chords[chord_dominant_7th_inv2 + har4] = 12;
+  chords[chord_dominant_7th_inv2 + har5] = 16;
+  //
+  // Major 9th
+  chords[chord_major_9th + root] = 0;
+  chords[chord_major_9th + har1] = 4;
+  chords[chord_major_9th + har2] = 7;
+  chords[chord_major_9th + har3] = 11;
+  chords[chord_major_9th + har4] = 14;
+  chords[chord_major_9th + har5] = none;
+  //
+  // Minor 9th
+  chords[chord_minor_9th + root] = 0;
+  chords[chord_minor_9th + har1] = 3;
+  chords[chord_minor_9th + har2] = 7;
+  chords[chord_minor_9th + har3] = 10;
+  chords[chord_minor_9th + har4] = 14;
+  chords[chord_minor_9th + har5] = none;
+  //
+  // Dominant 9th
+  chords[chord_dominant_9th + root] = 0;
+  chords[chord_dominant_9th + har1] = 4;
+  chords[chord_dominant_9th + har2] = 7;
+  chords[chord_dominant_9th + har3] = 10;
+  chords[chord_dominant_9th + har4] = 14;
+  chords[chord_dominant_9th + har5] = none;
+  //
+  // Major 11th
+  chords[chord_major_11th + root] = 0;
+  chords[chord_major_11th + har1] = 4;
+  chords[chord_major_11th + har2] = 7;
+  chords[chord_major_11th + har3] = 11;
+  chords[chord_major_11th + har4] = 14;
+  chords[chord_major_11th + har5] = 17;
+  //
+  // Minor 11th
+  chords[chord_minor_11th + root] = 0;
+  chords[chord_minor_11th + har1] = 3;
+  chords[chord_minor_11th + har2] = 7;
+  chords[chord_minor_11th + har3] = 10;
+  chords[chord_minor_11th + har4] = 14;
+  chords[chord_minor_11th + har5] = 17;
+  //
+  // Dominant 11th
+  chords[chord_dominant_11th + root] = 0;
+  chords[chord_dominant_11th + har1] = 4;
+  chords[chord_dominant_11th + har2] = 7;
+  chords[chord_dominant_11th + har3] = 10;
+  chords[chord_dominant_11th + har4] = 14;
+  chords[chord_dominant_11th + har5] = 17;
+  //
+  // Guitar power chord
+  chords[chord_power + root] = 0;
+  chords[chord_power + har1] = 7;
+  chords[chord_power + har2] = 12;
+  chords[chord_power + har3] = none;
+  chords[chord_power + har4] = none;
+  chords[chord_power + har5] = none;
+  
+  // Buffer for remembering which MIDI notes are currently playing
+  playing_notes[root] = none;
+  playing_notes[har1] = none;
+  playing_notes[har2] = none;
+  playing_notes[har3] = none;
+  playing_notes[har4] = none;
+  playing_notes[har5] = none;
+  
+  // Buffer for remembering which MIDI channel currently playing notes are on
+  playing_channel = none;
+  
+@slider
+  
+  ks_chord_lo = key_region_chords * 12;
+  ks_chord_hi = ks_chord_lo + 11;
+  
+  ks_octave_lo = key_region_octave * 12;
+  ks_octave_hi = ks_octave_lo + 9;
+  
+  ks_root_lo = key_region_notes * 12;
+  ks_root_hi = ks_root_lo + 12;
+  
+  updateChordTypes();
+  
+@block
+  
+  // Cycle through incoming MIDI messages
+  while(midirecv(offset, msg1, msg2) ?
+  (
+    // Flag to avoid notes outside the designated sections playing (and sticking!)
+    note_was_handled = 0;
+    
+    // Extract note properties
+    status   = msg1 & $xF0; // Message type
+    channel  = msg1 & $x0F; // Input channel
+    note     = msg2 & $x7F; // Note number
+    velocity = msg2 >> 8;   // Note velocity
+    
+    // If an octave switching key was pressed
+    (note >= ks_octave_lo && note <= ks_octave_hi) ?
+    (
+      // Update root octave number
+      root_octave = note - ks_octave_lo;
+      
+      // 12 notes in an octave * root octave number
+      note_octave = root_octave * 12;
+      
+      // Flag that this note input was processed
+      note_was_handled = 1;
+    );
+    
+    // If a chord switching key was pressed
+    (note >= ks_chord_lo && note <= ks_chord_hi) ?
+    (
+      // Key offset inside the range of 12 chord switching keys
+      chord_switch_nr = note - ks_chord_lo;
+      
+      // Flag that this note input was processed
+      note_was_handled = 1;
+    );
+    
+    // Update chord type
+    chord_type = chord_types[chord_switch_nr];
+    
+    // If an actual root note key was pressed
+    (note >= ks_root_lo && note <= ks_root_hi) ? 
+    (
+      // If the PLAYING NOTE on the PLAYING CHANNEL receives a NOTE ON or NOTE OFF message, or
+      // If a DIFFERENT NOTE on any OTHER CHANNELS receives a NOTE ON message
+      ((note == playing_notes[root] && channel == playing_channel && (status == MIDI_note_on || status == MIDI_note_off)) || 
+       (note != playing_notes[root] && status  == MIDI_note_on)) ?
+      (
+        // Iterator for loop below
+        chord_note_nr = 0;
+        
+        // Cycle through all "playing partial note" buffers
+        while (chord_note_nr < chord_notes)
+        (
+          // If a note at this partial position is currently already playing
+          (playing_notes[chord_note_nr] != none) ?
+          (
+            // Send a MIDI note off command for this partial note (on the old channel)
+            midisend(offset, MIDI_note_off | playing_channel, playing_notes[chord_note_nr] | (velocity << 8));
+            
+            // Reset the "note playing" flag for this partial chord note
+            playing_notes[chord_note_nr] = none;
+          );
+          
+          // Increment iterator and step to next note in chord
+          chord_note_nr = chord_note_nr + 1;
+        );
+      );
+      
+      // Update the "currently playing on channel nr" buffer variable
+      playing_channel = channel;
+      
+      // Figure out the offset of the pressed root key inside the root key range
+      root_offset = note - ks_root_lo;
+      
+      // Iterator for loop below
+      chord_note_nr = 0;
+      
+      // Cycle through all note buffers
+      while (chord_note_nr < chord_notes)
+      (
+        // The offset of this partial chord note in relation to the root note
+        partial_offset = chords[chord_type + chord_note_nr];
+        
+        // If this partial chord note has an actual offset assigned
+        (partial_offset != none) ?
+        (
+          // Calculate the MIDI note nr of this partial chord note
+          midi_note_nr = note_octave + root_offset + partial_offset;
+          
+          // If the calculated MIDI note number is inside the valid note range
+          (midi_note_nr < 128) ?
+          (
+            // Send the MIDI message out
+            midisend(offset, msg1, midi_note_nr | (velocity << 8));
+            
+            // Mark this partial's MIDI note number as "currently playing"
+            playing_notes[chord_note_nr] = midi_note_nr;
+          )
+          : // If the calculated MIDI note for this partial is outside the valid note range
+          (
+            // Increase "note of chord" iterator to be out of bounds i.e. escape loop
+            chord_note_nr = 6;
+          );
+        );
+        
+        // Increment "note of chord" interator
+        chord_note_nr = chord_note_nr + 1;
+      );
+      
+      // Flag that this note input was processed
+      note_was_handled = 1;
+    );
+    
+    // If the incoming note was NOT handled by one of the previous blocks i.e. it's out of bounds
+    (note_was_handled == 0) ?
+    (
+      // Send the MIDI message out to stop this note
+      midisend(offset, MIDI_note_off | channel, note | (velocity << 8));
+    );
+  ));
+  
+@sample
+  
+  // Update monitoring parameters
+  chord_switch_monitor = chord_switch_nr;
+  chord_type_monitor = chord_type / chord_notes;
+  root_octave_monitor = root_octave;
+  root_note_monitor = root_offset;
