@@ -836,7 +836,7 @@ plugins index page
 ReaPack Extension
 }}}
  installed, you can add the repository to Reaper with this URL:\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 \f1 https://raw.githubusercontent.com/chkhld/jsfx/main/index.xml\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 \f1 https://github.com/chkhld/jsfx/raw/main/index.xml\par}
 {\pard \ql \f0 \sa180 \li0 \fi0 If you {\b don't} have ReaPack installed, you can also add these plugins on a per-file basis.\par}
 {\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab Visit the {\field{\*\fldinst{HYPERLINK "https://github.com/chkhld/jsfx/blob/main/PLUGINS.md"}}{\fldrslt{\ul
 plugins index page
