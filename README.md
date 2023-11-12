@@ -1,7 +1,7 @@
 # chokehold JSFX
 A variety of free [JSFX](https://www.reaper.fm/sdk/js/) plugins I created for use in [Reaper](https://www.reaper.fm/).
 
-Visit the [plugins index page](https://github.com/chkhld/jsfx/blob/main/PLUGINS.md) for an overview of all of my currently published JSFX plugins, including screenshots and short descriptions. _See the source files for more specific details and instructions._
+Visit the [plugins index page](https://github.com/chkhld/jsfx/blob/master/PLUGINS.md) for an overview of all of my currently published JSFX plugins, including screenshots and short descriptions. _See the source files for more specific details and instructions._
 <br>
 <br>
 
