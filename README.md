@@ -7,14 +7,6 @@ Visit the [plugins index page](https://github.com/chkhld/jsfx/blob/main/PLUGINS.
 
 <a name="installation"></a>
 ## Installation
-If you have the [ReaPack Extension](https://reapack.com/) installed, you can add the repository to Reaper with this URL:
-
-```
-https://raw.githubusercontent.com/chkhld/jsfx/main/index.xml
-```
-<br>
-
-If you **don't** have ReaPack installed, you can also add these plugins on a per-file basis.
 - Visit the [plugins index page](https://github.com/chkhld/jsfx/blob/master/PLUGINS.md) and download what you want from there, or [get the full release here](https://github.com/chkhld/jsfx/releases/).
 - If you don't know what to do with these files, watch the [Reaper Blog tutorial](https://reaperblog.net/2015/06/quick-tip-how-to-install-js-plugins/) on how to install JSFX plugins.
 <br>
