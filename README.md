@@ -10,7 +10,7 @@ Visit the [plugins index page](https://github.com/chkhld/jsfx/blob/main/PLUGINS.
 If you have the [ReaPack Extension](https://reapack.com/) installed, you can add the repository to Reaper with this URL:
 
 ```
-https://raw.githubusercontent.com/chkhld/jsfx/main/index.xml
+https://github.com/chkhld/jsfx/raw/main/index.xml
 ```
 <br>
 
