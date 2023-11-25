@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="chokehold JSFX" commit="07a0be084c99b278e868146bc7eb7892b2434390">
+<index version="1" name="chokehold JSFX" commit="f316fe190bbbe416796d666956e6ac5f2588ef95">
   <category name="Clipper">
     <reapack name="hard_clipper.jsfx" type="effect" desc="Hard Clipper">
       <metadata>
@@ -54,6 +54,9 @@
       </version>
       <version name="1.8.2a" author="chokehold" time="2023-11-12T21:05:09Z">
         <source>https://github.com/chkhld/jsfx/raw/9cda735de2cdbf282a33bddec8a44c5354a32123/Clipper/knee_clipper.jsfx</source>
+      </version>
+      <version name="1.8.2b" author="chokehold" time="2023-11-25T14:05:07Z">
+        <source>https://github.com/chkhld/jsfx/raw/f316fe190bbbe416796d666956e6ac5f2588ef95/Clipper/knee_clipper.jsfx</source>
       </version>
     </reapack>
     <reapack name="sine_clipper.jsfx" type="effect" desc="Sine Clipper">
@@ -596,7 +599,7 @@
 \widowctrl\hyphauto
 
 {\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Wave Scope\par}
-{\pard \ql \f0 \sa180 \li0 \fi0 Simple volume adjustment between -48 and +48 dBfs for non-destructive edits or gain staging between plugins.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Waveform display that can visualize various mono/stereo channel streams as Decibels and signed or absolute samples. With fadeable colours and freeze-on-pause function. This means the colour of the waveform could be controlled by parameter modulation, and when you pause playback, the waveform won't continue updating or vanish.\par}
 }
 ]]></description>
         <link rel="website">https://github.com/chkhld/jsfx/</link>
@@ -604,6 +607,9 @@
       </metadata>
       <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
         <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Metering/wave_scope.jsfx</source>
+      </version>
+      <version name="1.8.2a" author="chokehold" time="2023-11-25T14:05:07Z">
+        <source>https://github.com/chkhld/jsfx/raw/f316fe190bbbe416796d666956e6ac5f2588ef95/Metering/wave_scope.jsfx</source>
       </version>
     </reapack>
   </category>
