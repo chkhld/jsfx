@@ -1,5 +1,5 @@
 desc:       Knee Clipper
-version:    1.8.2a
+version:    1.8.2b
 author:     chokehold
 tags:       processing gain amplitude clipper distortion saturation
 link:       https://github.com/chkhld/jsfx/
@@ -195,7 +195,7 @@ slider8:dBTrim=0<-12,12,0.01>Trim [dB]
           scaled = ratio * halfPi;
           
           // Run the [0,1/2π] ratio through sin, this rescales it into [0,1]
-          sined = sin(ratio * halfPi); // [0,1]
+          sined = sin(scaled); // [0,1]
           
           // Use the now differently scaled [0,1] ratio as the position inside the
           // target range of [kneeLower,ceiling] and interpolate an output value

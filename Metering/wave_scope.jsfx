@@ -1,5 +1,5 @@
 desc:       Wave Scope
-version:    1.8.2
+version:    1.8.2a
 author:     chokehold
 tags:       utility metering visualization scope amplitude
 link:       https://github.com/chkhld/jsfx/
@@ -7,8 +7,10 @@ screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/wave_sco
 about:
  # Wave Scope
  
- Simple volume adjustment between -48 and +48 dBfs for
- non-destructive edits or gain staging between plugins.
+ Waveform display that can visualize various mono/stereo channel streams as Decibels 
+ and signed or absolute samples. With fadeable colours and freeze-on-pause function.
+ This means the colour of the waveform could be controlled by parameter modulation,
+ and when you pause playback, the waveform won't continue updating or vanish.
 
 // ----------------------------------------------------------------------------
 // Don't need no I/O metering for dis
