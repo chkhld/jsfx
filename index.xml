@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="chokehold JSFX" commit="f316fe190bbbe416796d666956e6ac5f2588ef95">
+<index version="1" name="chokehold JSFX" commit="223cf3b63797835a258721be53bb8d251e5d1c77">
   <category name="Clipper">
     <reapack name="hard_clipper.jsfx" type="effect" desc="Hard Clipper">
       <metadata>
@@ -609,7 +609,10 @@
         <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Metering/wave_scope.jsfx</source>
       </version>
       <version name="1.8.2a" author="chokehold" time="2023-11-25T14:05:07Z">
-        <source>https://github.com/chkhld/jsfx/raw/f316fe190bbbe416796d666956e6ac5f2588ef95/Metering/wave_scope.jsfx</source>
+        <source>https://github.com/chkhld/jsfx/raw/3cb1d36aaee4ec01845ceb6a473f80a7c5a43f37/Metering/wave_scope.jsfx</source>
+      </version>
+      <version name="1.8.2b" author="chokehold" time="2024-08-20T15:24:16Z">
+        <source>https://github.com/chkhld/jsfx/raw/223cf3b63797835a258721be53bb8d251e5d1c77/Metering/wave_scope.jsfx</source>
       </version>
     </reapack>
   </category>
