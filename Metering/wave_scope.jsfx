@@ -193,7 +193,15 @@ out_pin:none
   // Triggers a display freeze when project is stopped 
   // or paused in "Play/Pause" freeze mode. Responsive
   // enough if this is switched in the @block section.
-  stopped = (freeze == 2 && play_state < 1) ? 1 : 0;
+  //
+  // Play state values:
+  // <0=error
+  //  0=stopped
+  //  1=playing
+  //  2=paused
+  //  5=recording
+  //  6=record paused
+  stopped = (freeze == 2 && (play_state <1 || play_state == 2 || play_state == 6));
   
 @sample
   
