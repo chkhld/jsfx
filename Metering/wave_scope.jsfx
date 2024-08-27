@@ -20,7 +20,7 @@ slider1:routing=0<0,3,1{Stereo (L+R),Mono (left),Mono (right),Mono (L+R summed)}
 slider2:scaling=0<0,2,1{Decibels,Samples (absolute),Samples (signed)}>Display scale
 slider3:speed=10<1,250,1>Display speed
 slider4:tint=90<0,255,0.01>Display colour
-slider5:freeze=2<0,1,1{Off,On,Stop/Pause}>Freeze
+slider5:freeze=2<0,2,1{Off,On,Stop/Pause}>Freeze
 
 in_pin:Input L
 in_pin:Input R
