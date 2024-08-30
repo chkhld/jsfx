@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="chokehold JSFX" commit="9f773098b2a2cee120ba1bde3b33a5fa6f3c4ee6">
+<index version="1" name="chokehold JSFX" commit="79f4be672cf2ff8e5a5774cb310cd17baaa36965">
   <category name="Clipper">
     <reapack name="hard_clipper.jsfx" type="effect" desc="Hard Clipper">
       <metadata>
@@ -110,6 +110,31 @@
       </metadata>
       <version name="1.8.2" author="chokehold" time="2023-11-12T06:44:31Z">
         <source>https://github.com/chkhld/jsfx/raw/f7533b7f004d37953f24bc742d6e58e7dc967f73/Clipper/soft_clipper.jsfx</source>
+      </version>
+    </reapack>
+    <reapack name="staging_clipper.jsfx" type="effect" desc="Staging Clipper">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Staging Clipper\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 This clipper is intended for signal leveling rather than distortion.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The idea was that the ceiling can be at an arbitrary point, even way above 0.0 dBfs, but wherever the ceiling sits, what comes out of the plugin will never exceed those 0.0 dBfs. Could be useful to create consistency between multiple tracks that vastly vary in level.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The ceiling value you set will be followed by the plugin, but also compensated by an internal gain stage to always have the output clip at 0.0 dBfs. You can then use the output trim as yet another gain adjustment, to offset the signal volume to wherever you need it to sit.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 If you set the ceiling to -12 dBfs, then the plugin will clip at -12 dBfs as instructed, but it will also boost the output by +12 dB so the signal coming out of the plugin will always appear clipped at 0 dBfs.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The input boost parameter lets you, well, boost the signal into the clipping stage.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The output trim will offset the output volume away from the 0 dBfs ceiling.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 So... if you want nothing to come out of the clipper past -12 dBfs, you'll need to set the ceiling to -12 dBfs to have the signal clipped there, and the output trim to -12 dB so the 0 dBfs compensated output is offset down to the desired -12 dBfs ceiling.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 And if your signal tends to shoot past +6 dBfs and you want to keep most of its detail, you can set the ceiling to +6 dBfs. The plugin will output a signal clipped at +6 dBfs but leveled to 0 dBfs, you can then use the output trim to adjust the output volume.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Easy, right? Ah, you'll get it. :)\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/staging_clipper.png</link>
+      </metadata>
+      <version name="1.8.3" author="chokehold" time="2024-08-30T20:23:32Z">
+        <source>https://github.com/chkhld/jsfx/raw/79f4be672cf2ff8e5a5774cb310cd17baaa36965/Clipper/staging_clipper.jsfx</source>
       </version>
     </reapack>
   </category>
