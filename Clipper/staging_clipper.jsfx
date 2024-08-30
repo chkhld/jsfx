@@ -1,0 +1,189 @@
+desc:Staging Clipper
+version:    1.8.3
+author:     chokehold
+tags:       processing gain amplitude clipper distortion saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/staging_clipper.png
+about:
+ # Staging Clipper
+ 
+ This clipper is intended for signal leveling rather than distortion.
+ 
+ The idea was that the ceiling can be at an arbitrary point, even way above 0.0 dBfs,
+ but wherever the ceiling sits, what comes out of the plugin will never exceed those
+ 0.0 dBfs. Could be useful to create consistency between multiple tracks that vastly
+ vary in level.
+ 
+ The ceiling value you set will be followed by the plugin, but also compensated by an 
+ internal gain stage to always have the output clip at 0.0 dBfs. You can then use the
+ output trim as yet another gain adjustment, to offset the signal volume to wherever 
+ you need it to sit.
+ 
+ If you set the ceiling to -12 dBfs, then the plugin will clip at -12 dBfs as instructed,
+ but it will also boost the output by +12 dB so the signal coming out of the plugin will
+ always appear clipped at 0 dBfs.
+ 
+ The input boost parameter lets you, well, boost the signal into the clipping stage.
+ 
+ The output trim will offset the output volume away from the 0 dBfs ceiling.
+ 
+ So... if you want nothing to come out of the clipper past -12 dBfs, you'll need to set 
+ the ceiling to -12 dBfs to have the signal clipped there, and the output trim to -12 dB
+ so the 0 dBfs compensated output is offset down to the desired -12 dBfs ceiling.
+ 
+ And if your signal tends to shoot past +6 dBfs and you want to keep most of its detail,
+ you can set the ceiling to +6 dBfs. The plugin will output a signal clipped at +6 dBfs
+ but leveled to 0 dBfs, you can then use the output trim to adjust the output volume.
+ 
+ Easy, right? Ah, you'll get it. :)
+ 
+// ----------------------------------------------------------------------------
+slider1:dBboost=0<-24,24,0.01>Input boost [dB]
+slider2
+slider3:type=0<0,2,1{Clean (sine based),Soft (tanh based),Hard}>Clipping type
+slider4:dBfsCeil=0<-24,24,0.01>Ceiling [dBfs]
+slider5
+slider6:dBtrim=0<-24,24,0.01>Output trim [dB]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts signed Decibels to float amplitude value
+  function dBToAmp (decibels) (pow(10, decibels * 0.05));
+  
+  // HARD CLIPPING -------------------------------------------------------------
+  //
+  //  Most basic "if larger than ceiling, set to ceiling" clamping.
+  //
+  function hardClip (sample)
+  (
+    sign(sample) * min(abs(sample), ceiling);
+  );
+  
+  // SOFT CLIPPING -------------------------------------------------------------
+  //
+  //  Hyperbolic Tangent implemented after code by Antto on KVR
+  //  https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  //  This type of clipping doesn't use a ceiling, if you want one then you have
+  //  to boost the signal into this function first, and attenuate it later on by
+  //  the factor 1/boost.
+  //
+  function softClip (sample) local (expPos, expNeg)
+  (
+    // Fake a non 0 dBfs ceiling by boosting the signal into the 0 dBfs ceiling
+    sample *= softBoost;
+    
+    // Hyperbolic tangent soft clipping below
+    expPos = exp(sample);
+    expNeg = 1.0 / (expPos); // exp(-number) = 1/exp(number)
+    sample = (expPos - expNeg) / (expPos + expNeg);
+    
+    // Compensate the initial fake ceiling boost by attenuating by the same factor,
+    // then return the soft clipped sample.
+    sample * softAtten;
+  );
+  
+  // SINE CLIPPING -------------------------------------------------------------
+  //
+  //  The output of the sine function is within the range [-1,+1] as long as its
+  //  input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
+  //  overdrive, with less distortion than common hyperbolic tangent saturation.
+  // 
+  //  Because sample values can reach +/- 1/2π before the hard clipping sets in,
+  //  there are about +3.92 dB of soft clipping headroom above 0 dBfs.
+  //
+  //  This type of clipping doesn't use a ceiling, if you want one then you have
+  //  to boost the signal into this function first, and attenuate it later on by
+  //  the factor 1/boost.
+  //  
+  halfPi = $pi * 0.5;
+  //
+  function sineClip (sample) local (inside)
+  (
+    // Fake a non 0 dBfs ceiling by boosting the signal into the 0 dBfs ceiling
+    sample *= softBoost;
+    
+    // Evaluate if the sample is inside the range [-1/2π,+1/2π]
+    inside = abs(sample) < halfPi;
+    
+    // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
+    // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
+    // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
+    // it through the sin() function, which returns values in range [-1,+1] for
+    // peak sample values up to 1/2π, so well over the usual 0 dBfs hard limit.
+    //
+    sample = inside * sin(sample) + !inside * sign(sample);
+    
+    // Compensate the initial fake ceiling boost by attenuating by the same 
+    // factor, then return the soft clipped sample.
+    sample * softAtten;
+  );
+  
+  // The actual clipping function.
+  //
+  // This could be optimized into a single line, but I'll leave it
+  // spread over several lines in order to explain what's going on.
+  function clip (sample) local (polarity)
+  (
+    // Store the +/- polarity of the incoming sample
+    polarity = sign(sample);
+    
+    // Apply input boost to the sample
+    sample *= gain;
+    
+    // Clip the boosted sample to stay below the ceiling.
+    //
+    // Instead of slow and expensive conditional if/elseif/etc. branching,
+    // this uses a highly performant set of additions and multiplications
+    // which amounts to the same as conditional branching. If the type==x
+    // conditions are false i.e. 0, the function they're multiplied by is
+    // not even called, let alone processed or evaluated. 0 * anything is 
+    // always 0, so the entire ((type==x) * something) is optimized to 0.
+    // Only where the type==x condition is true i.e. 1, the function will
+    // actually be processed and evaluated - and multiplied by 1 which of 
+    // course will also be optimized out, because 1 * something is always
+    // just that something. Ess emm arr tee.
+    sample = (type==0) * sineClip(sample) + 
+             (type==1) * softClip(sample) + 
+             (type==2) * hardClip(sample);
+    
+    // Apply the make-up gain that will shift the output level up or down 
+    // based on where the ceiling is, so that the output ceiling always
+    // sits at 0.0 dBfs.
+    sample *= makeup;
+    
+    // Apply the output trim to offset the 0.0 dBfs ceiling to wherever 
+    // the signal's level should sit, then return.
+    sample * trim;
+  );
+
+@slider
+  
+  // Calculate the gain stages
+  gain    = dBToAmp(dBboost);
+  ceiling = dBToAmp(dBfsCeil);
+  makeup  = 1.0 / ceiling; // Factor to shift output ceiling to 0 dBfs
+  trim    = dBToAmp(dBtrim);
+  
+  // Boost and attenuation for fake ceiling used in soft clipping modes
+  softBoost = 1.0 / ceiling;
+  softAtten = 1.0 / softBoost;
+
+@sample
+  
+  // Set this to 0 to start with first audio channel
+  channel = 0;
+  
+  // Cycle through all of the plugin's audio channels
+  while (channel < num_ch)
+  (
+    // Apply volume adjustments and clipping to this channel's sample
+    spl(channel) = clip(spl(channel));
+  
+    // Increment counter to next channel
+    channel += 1;
+  );
+  

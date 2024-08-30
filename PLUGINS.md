@@ -30,6 +30,7 @@ This page is an index of all my currently published JSFX plugins, including scre
 | <a name="knee-clipper"></a>[![knee_clipper](./assets/thumbnails/knee_clipper.jpg)](./assets/screenshots/knee_clipper.png) | [Knee Clipper](./Clipper/knee_clipper.jsfx) | A clipper neither purely hard nor purely soft, and yet a unification of both. |
 | <a name="sine-clipper"></a>[![sine_clipper](./assets/thumbnails/sine_clipper.jpg)](./assets/screenshots/sine_clipper.png) | [Sine Clipper](./Clipper/sine_clipper.jsfx) | A clipper that uses the smoothness of the sine wave to tame loud signal peaks. |
 | <a name="soft-clipper"></a>[![soft_clipper](./assets/thumbnails/soft_clipper.jpg)](./assets/screenshots/soft_clipper.png) | [Soft Clipper](./Clipper/soft_clipper.jsfx) | Increasingly lowers signal peaks the closer they get to an adjustable ceiling volume, call it warm tube overdrive if you must. Has up to 16x oversampling, DC blocker and optional final (non oversampled) hard clipping stage for true 0 dBfs output. |
+| <a name="staging-clipper"></a>[![staging_clipper](./assets/thumbnails/staging_clipper.jpg)](./assets/screenshots/staging_clipper.png) | [Staging Clipper](./Clipper/staging_clipper.jsfx) | A clipper that automatically compensates for the ceiling, useful for leveling. |
 <br>
 
 <a name="distortion"></a>
