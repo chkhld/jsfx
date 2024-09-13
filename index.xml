@@ -1,6 +1,43 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="chokehold JSFX" commit="79f4be672cf2ff8e5a5774cb310cd17baaa36965">
+<index version="1" name="chokehold JSFX" commit="90de3f4ed9ce85bb38285d6a71c97acc5bbfba84">
   <category name="Clipper">
+    <reapack name="clipping_algorithm_comparison.jsfx" type="effect" desc="Clipping Algorithm Comparison">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 \outlinelevel0 \b \fs36 Clipping Algorithm Comparison\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 You can use this as an actual clipping, saturation or distortion effect if you wish, but to me it's more of an experiment, an exploration of various clipping algorithms, comparing what each of them do better or worse than the others.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 There are currently 5 included clipping algorithms:\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab traditional hard clipping\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab traditional soft clipping (using hyperbolic tangent)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab my softer clipping method (using sine function)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab my custom "loud" method (as used originally in my ClipMax VST/AU plugin)\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab my custom "loud2" method (improved over the original "loud" method)\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 The ceiling for every algorithm is at 0.0 dBfs. You can use the Input boost to drive your signal into the 0.0 dBfs ceiling, and there's an Output trim to get what comes out of the plugin leveled to your liking.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Use the "Audition" parameter to set which part of the signal you want to hear.\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab "Original" is just the plugin in bypass, not even in/out gain applied\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab "Processed" is the output of [input -> boost -> clip -> trim]\par}
+{\pard \ql \f0 \sa0 \li360 \fi-360 \bullet \tx360\tab "Clipping difference" is effectively "what's being chopped off".\sa180\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 IMPORTANT: the "Clipping difference" signal is NOT itself clipped, so it could become VERY loud if a lot of signal is being clipped off the input! Be careful!\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 IMPORTANT: the "Clipping difference" signal can be absolute silence if you've selected the "Hard" algorithm and your input signal does not reach the 0.0 dBfs ceiling. This is correct, since below 0 dBfs there is no clipping yet, i.e. nothing is chopped off, i.e. no diff to hear.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 I've created Desmos graphs to help visualize what each algorithm does: https://www.desmos.com/calculator/tsv6iv58th\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Basically, to the left and right of 0, you have your input sample value. Above and below 0, you have the output sample value after clipping. The Linear Value line is the unclipped input-to-output relation, what comes out is exactly what it was when it went in.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 As a rule of thumb, the closer a clipping algorithm's curve runs to the Linear Value line, the less distortion is being introduced.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It's worth nothing that only min/max Hard clipping and Sine clipping will ever reach a sample value of +/- 1 i.e. true 0.0 dBfs. All other methods constantly keep approaching +/- 1 i.e. 0.0 dBfs, but will never actually reach them. That is until the differences become so small that the data format no longer offers sufficient precision to keep two values apart, and the stored value "snaps" to the +/- 1 ceiling i.e. 0.0 dBfs for lack of distinguishable values in between.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 It's also worth nothing that sample values rise and fall exponentially, so for every double sample value you can estimate ~ +6 dB difference, also every half sample value you can calculate with a ~ -6 dB difference.\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 For clarification, hopefully, here are some rough reference values: 8.0 --> +24.0 dBfs (1.0 * 8) 4.0 --> +12.0 dBfs (1.0 * 4) 2.0 --> + 6.0 dBfs (1.0 * 2) 1.0 --> 0.0 dBfs (1.0 * 1) 0.5 --> - 6.0 dBfs (1.0 / 2) 0.25 --> -12.0 dBfs (1.0 / 4) 0.125 --> -24.0 dBfs (1.0 / 8)\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 Why am I boring you with this..? To tell you that an input value of 0.5 on the graph sits at -6 dBfs, and at a 0.25 input value, you're still only looking at the signal at around -12 dBfs. Meaning most of the curvature you see will only come into play at extremely high levels, and the much more interesting aspects are hidden in the ranges on the graph below 0.25. So liberally turn your mouse wheel to zoom in. The nether regions of the Loud & Loud2 algorithms hide quite a bit of an "expansive" surprise.\par}
+}
+]]></description>
+        <link rel="website">https://github.com/chkhld/jsfx/</link>
+        <link rel="screenshot">https://github.com/chkhld/jsfx/blob/main/assets/screenshots/clipping_algorithm_comparison.png</link>
+      </metadata>
+      <version name="1.8.3" author="chokehold" time="2024-09-13T20:19:58Z">
+        <source>https://github.com/chkhld/jsfx/raw/90de3f4ed9ce85bb38285d6a71c97acc5bbfba84/Clipper/clipping_algorithm_comparison.jsfx</source>
+      </version>
+    </reapack>
     <reapack name="hard_clipper.jsfx" type="effect" desc="Hard Clipper">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
