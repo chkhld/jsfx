@@ -26,6 +26,7 @@ This page is an index of all my currently published JSFX plugins, including scre
 ## Clipper
 | Screenshot | Plugin | Description |
 | ---------- | ------ | ----------- |
+| <a name="clipping-algorithm-comparison"></a>[![clipping_algorithm_comparison](./assets/thumbnails/clipping_algorithm_comparison.jpg)](./assets/screenshots/clipping_algorithm_comparison.png) | [Clipping Algorithm Comparison](./Clipper/clipping_algorithm_comparison.jsfx) | You can use this as a simple clipping, saturation or distortion effect if you wish, but to me it's more of an experiment, an exploration of various clipping algorithms, comparing what each of them do better or worse than the others. |
 | <a name="hard-clipper"></a>[![hard_clipper](./assets/thumbnails/hard_clipper.jpg)](./assets/screenshots/hard_clipper.png) | [Hard Clipper](./Clipper/hard_clipper.jsfx) | Simple and effective, chops away peaks above an adjustable ceiling volume, call it cold transistor distortion if you must. |
 | <a name="knee-clipper"></a>[![knee_clipper](./assets/thumbnails/knee_clipper.jpg)](./assets/screenshots/knee_clipper.png) | [Knee Clipper](./Clipper/knee_clipper.jsfx) | A clipper neither purely hard nor purely soft, and yet a unification of both. |
 | <a name="sine-clipper"></a>[![sine_clipper](./assets/thumbnails/sine_clipper.jpg)](./assets/screenshots/sine_clipper.png) | [Sine Clipper](./Clipper/sine_clipper.jsfx) | A clipper that uses the smoothness of the sine wave to tame loud signal peaks. |

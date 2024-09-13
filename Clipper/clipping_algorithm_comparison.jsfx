@@ -1,0 +1,266 @@
+desc:Clipping Algorithm Comparison
+version:    1.8.3
+author:     chokehold
+tags:       processing gain amplitude clipper distortion saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/clipping_algorithm_comparison.png
+about:
+ # Clipping Algorithm Comparison
+ 
+ You can use this as an actual clipping, saturation or distortion effect if you
+ wish, but to me it's more of an experiment, an exploration of various clipping
+ algorithms, comparing what each of them do better or worse than the others.
+ 
+ There are currently 5 included clipping algorithms:
+ - traditional hard clipping 
+ - traditional soft clipping (using hyperbolic tangent)
+ - my softer clipping method (using sine function)
+ - my custom "loud" method (as used originally in my ClipMax VST/AU plugin)
+ - my custom "loud2" method (improved over the original "loud" method)
+ 
+ The ceiling for every algorithm is at 0.0 dBfs. You can use the Input boost to
+ drive your signal into the 0.0 dBfs ceiling, and there's an Output trim to get
+ what comes out of the plugin leveled to your liking.
+ 
+ Use the "Audition" parameter to set which part of the signal you want to hear.
+ - "Original" is just the plugin in bypass, not even in/out gain applied
+ - "Processed" is the output of [input -> boost -> clip -> trim]
+ - "Clipping difference" is effectively "what's being chopped off".
+ 
+ IMPORTANT: the "Clipping difference" signal is NOT itself clipped, so it could
+            become VERY loud if a lot of signal is being clipped off the input!
+            Be careful!
+ 
+ IMPORTANT: the "Clipping difference" signal can be absolute silence if you've
+            selected the "Hard" algorithm and your input signal does not reach
+            the 0.0 dBfs ceiling. This is correct, since below 0 dBfs there is
+            no clipping yet, i.e. nothing is chopped off, i.e. no diff to hear.
+ 
+ I've created Desmos graphs to help visualize what each algorithm does:
+ https://www.desmos.com/calculator/tsv6iv58th
+ 
+ Basically, to the left and right of 0, you have your input sample value. Above
+ and below 0, you have the output sample value after clipping. The Linear Value 
+ line is the unclipped input-to-output relation, what comes out is exactly what
+ it was when it went in.
+ 
+ As a rule of thumb, the closer a clipping algorithm's curve runs to the Linear 
+ Value line, the less distortion is being introduced.
+ 
+ It's worth nothing that only min/max Hard clipping and Sine clipping will ever
+ reach a sample value of +/- 1 i.e. true 0.0 dBfs. All other methods constantly
+ keep approaching +/- 1 i.e. 0.0 dBfs, but will never actually reach them. That
+ is until the differences become so small that the data format no longer offers
+ sufficient precision to keep two values apart, and the stored value "snaps" to
+ the +/- 1 ceiling i.e. 0.0 dBfs for lack of distinguishable values in between.
+ 
+ It's also worth nothing that sample values rise and fall exponentially, so for
+ every double sample value you can estimate ~ +6 dB difference, also every half
+ sample value you can calculate with a ~ -6 dB difference.
+ 
+ For clarification, hopefully, here are some rough reference values:
+  8.0   --> +24.0 dBfs (1.0 * 8)
+  4.0   --> +12.0 dBfs (1.0 * 4)
+  2.0   --> + 6.0 dBfs (1.0 * 2)
+  1.0   -->   0.0 dBfs (1.0 * 1)
+  0.5   --> - 6.0 dBfs (1.0 / 2)
+  0.25  --> -12.0 dBfs (1.0 / 4)
+  0.125 --> -24.0 dBfs (1.0 / 8)
+ 
+ Why am I boring you with this..? To tell you that an input value of 0.5 on the 
+ graph sits at -6 dBfs, and at a 0.25 input value, you're still only looking at
+ the signal at around -12 dBfs. Meaning most of the curvature you see will only
+ come into play at extremely high levels, and the much more interesting aspects
+ are hidden in the ranges on the graph below 0.25. So liberally turn your mouse
+ wheel to zoom in. The nether regions of the Loud & Loud2 algorithms hide quite
+ a bit of an "expansive" surprise.
+
+// ----------------------------------------------------------------------------
+
+slider1:gain_db=0<-24,24,0.01>Input boost [dB]
+slider2
+slider3:clip_id=0<0,4,{Hard,Soft (tanh),Softer (sin),Loud (legacy),Loud2}>Clipping algorithm
+slider4:monitor=1<0,2,{Original input (bypass),Processed (clipped),Clipping difference (can become LOUD!)}>Audition
+slider5
+slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts signed Decibels to float amplitude value
+  function dBToAmp (decibels) (pow(10, decibels * 0.05));
+  
+  // ----------------------------------------------------------------------------
+  // HYPERBOLIC TANGENT APPROXIMATION
+  //
+  //  Implemented after code posted by Antto on KVR
+  //  https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function tanh (number) local (xa, x2, x3, x4, x7, res)
+  (
+    xa = abs(number); x2 = xa * xa; x3 = x2 * xa; x4 = x2 * x2; x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    sign(number) * res;
+  );
+  // ----------------------------------------------------------------------------
+  
+  // ----------------------------------------------------------------------------
+  // HYPERBOLIC SINE FUNCTION
+  //
+  //  Implemented after NumPy
+  //  https://numpy.org/doc/stable/reference/generated/numpy.sinh.html
+  //
+  function sinh (number)
+  (
+    0.5 * (exp(number) - exp(-number));
+  );
+  // ----------------------------------------------------------------------------
+  
+  // ----------------------------------------------------------------------------
+  // ERROR FUNCTION
+  //
+  //  Implemented after Stack Overflow
+  //  https://stackoverflow.com/a/457805
+  //
+  function erf (x) local (polarity, a1, a2, a3, a4, a5, p, t, y)
+  (
+    polarity = sign(x); x = abs(x);
+    a1 =  0.254829592; a2 = -0.284496736; a3 = 1.421413741;
+    a4 = -1.453152027; a5 =  1.061405429; p  = 0.3275911;
+    t = 1.0 / (1.0 + p * x);
+    
+    polarity * (1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * exp(- x * x));
+  );
+  // ----------------------------------------------------------------------------
+  
+  // HARD CLIPPING --------------------------------------------------------------
+  //
+  // Most basic "if above ceiling, restrict to ceiling" clamping. This is what 
+  // people usually call "cold transistor distortion".
+  //
+  function hardClip (sample) (max(-1.0, min(1.0, sample)));
+  // ----------------------------------------------------------------------------
+  
+  // SOFT CLIPPING --------------------------------------------------------------
+  //
+  //  Traditional hyperbolic sine based sigmoid curve distortion. This is what 
+  //  people usually call soft clipping or "warm tube saturation".
+  // 
+  function softClip (sample)
+  (
+    tanh(sample);
+  );
+  // ----------------------------------------------------------------------------
+  
+  // SINE CLIPPING --------------------------------------------------------------
+  //
+  //  The output of the sine function is within the range [-1,+1] as long as its
+  //  input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
+  //  overdrive, with less distortion than common hyperbolic tangent saturation.
+  //
+  //  This type of clipping doesn't use a ceiling, if you want one then you have
+  //  to boost the signal into this function first, and attenuate it later on by
+  //  the factor 1/boost.
+  //  
+  halfPi = $pi * 0.5;
+  //
+  function sineClip (sample) local (inside)
+  (
+    // Evaluate if the sample is inside the range [-1/2π,+1/2π]
+    inside = abs(sample) < halfPi;
+    
+    // If the sample is outside [-1/2π,+1/2π] then output the sample's polarity,
+    // which will always be either -1 or +1, making it a perfect 0 dBfs ceiling
+    // value for hard clipping. If the sample is inside [-1/2π,+1/2π], then run
+    // it through the sin() function, which returns values in range [-1,+1] for
+    // peak sample values up to 1/2π, so well over the usual 0 dBfs hard limit.
+    //
+    inside * sin(sample) + !inside * sign(sample);
+  );
+  // ----------------------------------------------------------------------------
+  
+  // LOUD CLIPPING --------------------------------------------------------------
+  //
+  //  Sigmoid curve distortion that stays close to the linear signal very long.
+  //  Used in original ClipMax plugin.
+  // 
+  function loudClip (sample)
+  (
+    tanh(0.55 * sinh(1.75 * sample));
+  );
+  // ----------------------------------------------------------------------------
+  
+  // LOUD2 CLIPPING -------------------------------------------------------------
+  //
+  //  Sigmoid curve distortion that stays close to the linear signal very long.
+  //  Successor to the original ClipMax plugin "Loud" algorithm.
+  // 
+  function loudClip2 (sample)
+  (
+    erf(0.54 * sinh(1.6 * sample));
+  );
+  // ----------------------------------------------------------------------------
+
+@slider
+  
+  // Turn slider dB/dBfs values into amplitudes
+  gain = dBToAmp(gain_db);
+  trim = dBToAmp(trim_db);
+
+@sample
+  
+  // Only process if not bypassed
+  monitor > 0 ?
+  (
+    // Set channel counter to 0 to start with first input channel
+    channel = 0;
+    
+    // Cycle through all of the plugin's input channels
+    while (channel < num_ch)
+    (
+      // Fetch the channel's sample and apply input gain
+      channelSample = spl(channel) * gain;
+      
+      // Hard
+      (clip_id == 0) ?
+      (
+        channelClipped = hardClip(channelSample);
+      )
+      : // Soft (tanh)
+      (clip_id == 1) ?
+      (
+        channelClipped = softClip(channelSample);
+      )
+      : // Softer (sin)
+      (clip_id == 2) ?
+      (
+        channelClipped = sineClip(channelSample);
+      )
+      : // Loud
+      (clip_id == 3) ?
+      (
+        channelClipped = loudClip(channelSample);
+      )
+      : // Loud2
+      (clip_id == 4) ?
+      (
+        channelClipped = loudClip2(channelSample);
+      );
+      
+      // If the removed signal i.e. difference should be auditioned
+      (monitor == 2) ?
+      (
+        // Subtract processed sample from original input sample
+        channelClipped = channelSample - channelClipped;
+      );
+      
+      // Apply output gain and write processed signal to output sample
+      spl(channel) = channelClipped * trim;
+      
+      // Increment counter to next channel
+      channel += 1;
+    );
+  );
+  
