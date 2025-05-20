@@ -1,5 +1,5 @@
 desc:       Correlation Meter
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility pan panorama stereo channel correlation phase scope meter
 link:       https://github.com/chkhld/jsfx/
@@ -70,14 +70,6 @@ out_pin:none
   slowDownA = 1.0;
   slowDownB = 0.0;
   
-  // Fast replacement for (1.0 / value) expressions
-  //
-  function fastReciprocal (value) local (factor)
-  (
-    factor = invsqrt(historyLength);
-    (factor * factor);
-  );
-  
   // One-pole LP filter to, well, slow down the
   // indicator's movement.
   //
@@ -98,7 +90,7 @@ out_pin:none
     (
       historyLength = samplesPerMS;
       historyDouble = historyLength * 2;
-      historyScaler = fastReciprocal(historyLength); // 1.0/historyLength
+      historyScaler = 1.0/historyLength;
       
       memset(history, 0.0, historyDouble);
     );
@@ -201,7 +193,7 @@ out_pin:none
     
     halfWidth = gfx_w/2;
     
-    // Colour gray / seethrough white
+    // Colour gray / see-through white
     gfx_set(1, 1, 1, 0.5);
     
     // Paint center 0 line

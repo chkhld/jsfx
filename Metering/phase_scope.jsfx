@@ -1,5 +1,5 @@
 desc:       Phase Scope
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility metering visualization panorama stereo phase vector scope goniometer lissajous
 link:       https://github.com/chkhld/jsfx/
@@ -8,7 +8,7 @@ about:
  # Phase Scope
  
  This is also commonly known as Goniometer, Vector Scope or 
- Lissajous display. It visualizes the relation of amplitude
+ Lissajous display. It visualises the relation of amplitude
  and phase in a signal, i.e. "the stereo field".
 
 // ----------------------------------------------------------------------------
@@ -17,7 +17,7 @@ in_pin:right input
 out_pin:none
 options:no_meter
 
-slider1:view=0<0,2,1{Dots,Lines,Rays}>Visualization
+slider1:view=0<0,2,1{Dots,Lines,Rays}>Visualisation
 slider2:tint=85<0,255,0.01>Colour
 slider3:glow=1<0,1,1{Off,On}>Glow
 slider4:axes=1<0,3,1{None,Left/Right,Left/Right + Decibels,Mid/Side,Mid/Side + Decibels,Left/Right + Mid/Side + Decibels}>Indicators
@@ -29,7 +29,7 @@ slider6:freeze=2<0,2,1{Off,On,Stop/Pause}>Freeze
   //
   function clamp (signal) (max(-1, min(1, signal)));
   
-  // Some radian constants to minimize per-sample calculations
+  // Some radian constants to minimise per-sample calculations
   quarterPi = $PI * 0.25; //  45°
   pi        = $PI;        // 180°
   oneDot5Pi = $PI * 1.5;  // 270°
@@ -296,7 +296,7 @@ slider6:freeze=2<0,2,1{Off,On,Stop/Pause}>Freeze
     );
   );
   
-  // Draws the sample history visualizations
+  // Draws the sample history visualisations
   //
   // Blurring the main screen buffer would not just blur the history
   // display, but also the indicators and labels. To avoid this, the
@@ -384,8 +384,8 @@ slider6:freeze=2<0,2,1{Off,On,Stop/Pause}>Freeze
       gfx_blurto(gfx_w, gfx_h);
       
       // Switch to the main buffer and blit the now blurred
-      // visualization on top of what's already there, i.e.
-      // indicators and un-blurred visualization.
+      // visualisation on top of what's already there, i.e.
+      // indicators and un-blurred visualisation.
       gfx_dest = -1;
       gfx_a = 0.3;
       gfx_x = gfx_y = 0;
@@ -422,7 +422,7 @@ slider6:freeze=2<0,2,1{Off,On,Stop/Pause}>Freeze
   gfx_mode  = 1; // additive
   gfx_clear = 0; // black
   
-  // Calculate the side length of a square centered in the window
+  // Calculate the side length of a square centred in the window
   viewSize = min(gfx_w, gfx_h) / 2;
   
   // The distance a dot may be from center in any

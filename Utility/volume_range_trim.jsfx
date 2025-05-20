@@ -1,5 +1,5 @@
 desc:       Volume Range Trim
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility gain range volume trim
 link:       https://github.com/chkhld/jsfx/
@@ -69,7 +69,7 @@ slider6:dBMeter=0<-48,48,0.01>Trim meter [dB]
   
   // SMOOTHEST STEP
   //
-  // Particularly nice SmoothStep varation.
+  // Particularly nice SmoothStep variation.
   //
   // Implemented after Kyle McDonald
   // https://twitter.com/kcimc/status/580738643347804160?lang=en

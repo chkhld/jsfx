@@ -1,5 +1,5 @@
 desc:       Test Signals
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility synth noise tone
 link:       https://github.com/chkhld/jsfx/
@@ -36,7 +36,7 @@ about:
    Base 100 Hz  x  Multiplier 4.4  =   440 Hz
    Base 100 Hz  x  Multiplier 10   =  1000 Hz
  
- The Volume L+R slider changes the levels of both L+R channelsby the
+ The Volume L+R slider changes the level of both the L+R channels by
  the same amount. The L/R Offset sliders will change volume for each
  channel individually.
  
@@ -61,7 +61,7 @@ slider8: volumeR=0<-48,48,0.1> Volume R offset [dB]
 slider9: invertL=0<0,1,1{Normal,Flipped}> Flip Polarity L
 slider10:invertR=0<0,1,1{Normal,Flipped}> Flip Polarity R
 slider11:outRouting=0<0,3,1{Stereo,Mono (left),Mono (right),Mono (summed)}> Output Channels
-slider12:blockDC=1<0,1,1{Disabled,Enabled}> DC Blocker
+slider12:blockDC=1<0,1,1{Deactivated,Activated}> DC Blocker
 
 // This is a generator and doesn't need input monitoring
 out_pin:left output
@@ -69,7 +69,7 @@ out_pin:right output
 
 @init
   
-  // Stop Reaper from re-initializing the plugin every time playback is reset
+  // Stop Reaper from re-initialising the plugin every time playback is reset
   ext_noinit = 1;
   
   // Used for oscillator phase calculations
@@ -90,7 +90,7 @@ out_pin:right output
   noiseBuffer = 10200;
   
   // Converts dB values to float gain factors
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   // BASE FREQUENCY SELECTION
   // 

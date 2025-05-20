@@ -1,5 +1,5 @@
 desc:       Volume Trim
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility gain volume trim
 link:       https://github.com/chkhld/jsfx/
@@ -18,7 +18,7 @@ slider1:dBTrim=0<-48,48,0.0001>Trim [dB]
 
 @init
   
-  // Converts signed dB values to normalized float gain factors.
+  // Converts signed dB values to normalised float gain factors.
   // Divisions are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
   function dBToGain (decibels) (pow(10, decibels * 0.05));
 

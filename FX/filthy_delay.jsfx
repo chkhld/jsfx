@@ -1,5 +1,5 @@
 desc:       Filthy Delay
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       timing delay echo saturation
 link:       https://github.com/chkhld/jsfx/
@@ -30,7 +30,7 @@ about:
  
  If the feedback quality is set to Clean, only filtering is applied,
  otherwise the delay taps stay untouched. Switch the quality to the
- Filthy setting to enable saturation and drive for feedback taps.
+ Filthy setting to activate saturation and drive for feedback taps.
  
  The Filthy Drive parameter sets the amount of gain with which taps
  in the feedback path are boosted into the saturation function. The
@@ -74,7 +74,7 @@ out_pin:right output
   newSamples = 0;
   
   // Converts dB values to float gain factors
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   // Hyperbolic tangent approximation, used for soft clipping.
   //
@@ -349,7 +349,7 @@ out_pin:right output
   newSamples = ceil(0.001 * msDelay * srate);
   
   // Check if the number of required samples has changed, and only then
-  // start resetting, redimensioning, reinitializing the delay buffers.
+  // start resetting, redimensioning, reinitialising the delay buffers.
   // This check has to be done so that not every slider change triggers
   // a reset and causes temporary silence.
   //
@@ -399,7 +399,7 @@ out_pin:right output
 
 @sample
   
-  // Store undprocessed samples for later dry/wet mixing
+  // Store unprocessed samples for later dry/wet mixing
   dryL = spl0;
   dryR = spl1;
   

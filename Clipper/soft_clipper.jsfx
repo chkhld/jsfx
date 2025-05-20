@@ -1,5 +1,5 @@
 desc:       Soft Clipper
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing gain amplitude clipper distortion saturation
 link:       https://github.com/chkhld/jsfx/
@@ -25,7 +25,7 @@ about:
  Saturation and soft-clipping can also introduce evil aliasing,
  that's when newly generated harmonics are so high in frequency
  that they shoot past 22 kHz and could not possibly be handled
- anymore by the samplerate, so they "fold back" into the lower
+ anymore by the sample rate so they "fold back" into the lower
  part of the frequency spectrum where they can cause havoc and
  destruction by becoming audible, sitting in unharmonic spaces
  and even cancelling out signal that you actually want to hear.
@@ -74,8 +74,8 @@ slider1:dBCeil=0<-48, 0,0.01> Ceiling dBfs
 slider2:dBGain=0<  0,48,0.01> Boost dBfs
 slider3:ovs=1<0,4,{Off,2x,4x,8x,16x}> Oversampling
 slider4:filter=1<0,3,{Relaxed,Normal,Heavy,Insane}> Filtering
-slider5:blocker=1<0,0,{Disabled,Enabled}> DC blocker
-slider6:hard=0<0,1,{Disabled,Enabled}> Hard clipping
+slider5:blocker=1<0,0,{Deactivated,Activated}> DC blocker
+slider6:hard=0<0,1,{Deactivated,Activated}> Hard clipping
 
 in_pin:left input
 in_pin:right input
@@ -95,7 +95,7 @@ out_pin:right output
   orderDn = 1;
   
   // Decibel to gain factor conversion
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   // Hyperbolic tangent approximation, used for soft clipping.
   //
@@ -308,7 +308,7 @@ out_pin:right output
     );
   );
   
-  // If DC blocking enabled
+  // If DC blocking activated
   blocker == 1 ?
   (
     // Run the DC blocker on each sample
@@ -316,7 +316,7 @@ out_pin:right output
     spl1.dcBlocker();
   );
   
-  // If hard clipping is enabled
+  // If hard clipping is activated
   hard == 1 ?
   (
     // Hard-clip the output to avoid any distortion outside of this

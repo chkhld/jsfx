@@ -1,5 +1,5 @@
 desc:       Reference Noise
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility noise mastering analysis reference spectrum
 link:       https://github.com/chkhld/jsfx/
@@ -19,13 +19,13 @@ about:
  noise, the approximated workaround curve of pink noise can be
  "bent" into much more useful reference signals.
  
- That's what this thing is. I analyzed a wide variety of songs
+ That's what this thing is. I analysed a wide variety of songs
  from various styles and eras, and created a list of filtering
  profiles that turn primitive pink noise into useful reference
  signals.
  
  Run the output of this plugin into the sidechain/key input of
- your favorite spectrum analyzer, if it has a sidechain input,
+ your favourite spectrum analyser, if it has a sidechain input,
  and try to mix your tracks to approximate its spectral curve.
 
 // ----------------------------------------------------------------------------
@@ -117,7 +117,7 @@ out_pin:Right
   
   // WHITE NOISE
   //
-  // Randomized sample values between -1 and +1
+  // Randomised sample values between -1 and +1
   // 
   function tickWhite ()
   (
@@ -135,7 +135,7 @@ out_pin:Right
   //
   function tickPink () local (break, sample)
   (
-    // Randomized sample in range [0,1]
+    // Randomised sample in range [0,1]
     sample = rand();
     
     break = 0;

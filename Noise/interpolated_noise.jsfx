@@ -1,5 +1,5 @@
 desc:       Interpolated Noise
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       generator synthesis noise
 link:       https://github.com/chkhld/jsfx/
@@ -77,7 +77,7 @@ out_pin:right output
   dcLastOutL = 0.0;
   dcLastOutR = 0.0;
 
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   function clamp (number, low, high) (max(low, min(high, number)));
   function random (limit) (rand(2.0 * limit) - limit);
   

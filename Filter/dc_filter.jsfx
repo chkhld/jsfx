@@ -1,5 +1,5 @@
 desc:       DC Filter
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility dc offset filter blocker
 link:       https://github.com/chkhld/jsfx/
@@ -27,7 +27,7 @@ options:no_meter
 
 @init // -----------------------------------------------------------------------
   
-  // Stop Reaper from re-initializing the plugin every time playback is reset as
+  // Stop Reaper from re-initialising the plugin every time playback is reset as
   // it could mess up the state buffers and cause DC to pass during operation.
   ext_noinit = 1;
   
@@ -47,7 +47,7 @@ options:no_meter
     previous = previousAddress[0]; // Bracket addressing is slow, saving time
     sample  += previous * 0.99988487;
     filtered = sample - previous;
-    previousAddress[0] = sample; // Can't avoid brack addressing here
+    previousAddress[0] = sample; // Can't avoid bracket addressing here
     filtered;
   );
   

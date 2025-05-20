@@ -1,5 +1,5 @@
 desc:       Stereo Pan
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility pan panorama stereo channel
 link:       https://github.com/chkhld/jsfx/
@@ -8,7 +8,7 @@ about:
  # Stereo Pan
  
  Implementation of various standard panning laws,
- as well as some of my own customized types.
+ as well as some of my own customised types.
 
 // ----------------------------------------------------------------------------
 slider1:0<-100,100,0.001> Position [-L % R+]
@@ -21,7 +21,7 @@ out_pin:left output
 out_pin:right output
 
 @init
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   quarterPi = 0.7853981634;
   halfPi    = 1.5707963268;

@@ -1,5 +1,5 @@
 desc:       Bus Compressor
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing compressor dynamics gain
 link:       https://github.com/chkhld/jsfx/
@@ -36,7 +36,7 @@ about:
  M+S mode, the stereo field can appear "widened", depending on how
  much each channel is compressed.
  
- With stereo linking disabled, both L+R channels will be processed 
+ With stereo linking turned off the L+R channels will be processed 
  individually. Fading in stereo linking will make the detector act
  on a mix of the L+R channels increasingly. If you have incoherent
  signals (e.g. two separate guitars) on both channels, you'll most
@@ -59,7 +59,7 @@ about:
  the compressor squashes the signal, the more soft saturation will
  be introduced into the material.
  
- Hard 0 dBfs output clipping may be enabled if so desired, but may
+ Hard 0 dBfs output clipping may be selected if so desired but may
  be a bit harsh and buzzy sounding. Use the Makeup gain to "boost"
  the material into this, or don't.
  
@@ -79,7 +79,7 @@ slider9: linkAmount=100<0, 100, 1>Stereo link [%]
 slider10:instability=100<0,100,0.01>Instability [%]
 slider11:saturation=100<0,100,0.01>Saturation [%]
 slider12:dBTrim=0<-24, 24, 0.01>Makeup gain [dB]
-slider13:clip=0<0,1,{Disabled,Hard clip 0 dBfs}>Clip output
+slider13:clip=0<0,1,{Deactivated,Hard clip 0 dBfs}>Clip output
 slider14:pctMix=100<0,100,0.01>Dry/wet mix [%]
 
 in_pin:Input L

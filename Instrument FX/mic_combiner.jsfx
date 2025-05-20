@@ -1,5 +1,5 @@
 desc:       Mic Combiner
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility microphone mic mixer gain volume filter
 link:       https://github.com/chkhld/jsfx/
@@ -20,7 +20,7 @@ about:
  even adjust their timing in relation to the rest of the project. You would
  do this to bring their phases into sync. When positioning microphones, you
  are usually measuring distances, plus distances are easier to measure than
- timings, so it makes more sense to use millimeters as the unit rather than
+ timings, so it makes more sense to use millimetres as the unit rather than
  milliseconds or even samples. Unfortunately, the value range makes the two
  sliders very coarse, so it's recommended to adjust them with Cmd/Ctrl held.
  
@@ -73,9 +73,6 @@ out_pin:Output A+B
   // Converts dB values to float gain factors. Divisions
   // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
   function dBToGain (decibels) (pow(10, decibels * 0.05));
-  
-  // Accelerated 1/x calculation
-  function fastReciprocal (value) (sqr(invsqrt(value)));
   
   // VARIOUS INTERPOLATION METHODS ---------------------------------------------
   // 
@@ -422,7 +419,7 @@ out_pin:Output A+B
   mixB  = smoothStep(1.0 - (mix < 0) * abs(mix)); // Range [0,1]
   //
   // Compensation factor to counter volume loss towards +/- 100 extremes
-  mixC  = fastReciprocal(mixA + mixB);
+  mixC  = 1.0 / (mixA + mixB);
   
   // CPU saver, statically pre-calculate all signal gain adjustments (pre mono)
   adjustA = muteA * flipA * gainA * mixA * mixC;

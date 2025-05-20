@@ -1,5 +1,5 @@
 desc:       Knee Clipper
-version:    1.8.2b
+version:    1.8.3
 author:     chokehold
 tags:       processing gain amplitude clipper distortion saturation
 link:       https://github.com/chkhld/jsfx/
@@ -11,7 +11,7 @@ about:
  
  Hard clippers are usually lamented about as producing digital, cold and nasty
  sound. But they are perfect for very short overs, as they will not affect the
- signal in any way before overs actually happen, and only those occuring overs
+ signal in any way before overs actually happen, and only those apparent overs
  will be clipped, nothing else. You can get away with lots of hard clipping on
  percussive and transient-rich material like drums. For more consistent things
  like a bass track or a full mix, hard clipping is not ideal as it tends to be
@@ -48,14 +48,14 @@ about:
  Any signal within the lower and upper knee threshold range is gently rescaled
  to fit below the ceiling, even if the signal originally shot past the ceiling,
  within the confines of the [ceiling,upper knee threshold] range. This imparts
- a little bit of soft clipping saturation, and preverves the life in very loud
+ a little bit of soft clipping saturation, and preserves the life in very loud
  transients significantly better than other, more trivial clipping methods.
  
  The "super soft" option decides how the part of the signal within the knee is
- rescaled. With the "super soft" option disabled, the rescaling is more linear
+ rescaled. With the "super soft" option deactivated rescaling gets more linear
  which means the transition into hard clipping occurs later but faster, so the
  signal can become slightly louder before the hard distortion kicks in, but at
- the cost of being harsher and much more immediate. With "super soft" enabled,
+ the cost of being harsher and much more immediate. With "super soft" selected,
  rescaling inside the knee uses cosine interpolation to transition between the
  unclipped and clipped states more gradually. This sounds less harsh but comes
  at the cost of some output volume.
@@ -82,12 +82,12 @@ about:
  In the metering section, the ceiling is displayed as a red line while no knee
  is set. Anything above the red line will be hard-clipped. As soon as there is
  a knee present, the ceiling turns orange, because it now no longer represents
- the point of hard clipping. With knee enabled, the yellow marker line left of
+ the point of hard clipping. With knee selected the yellow marker line left of
  the ceiling line visualizes the onset of the knee. Signal exceeding that line
  is gently compacted until it hits the upper limit of the knee range, which is
  displayed as the red marker line to the right of the ceiling. Anything beyond
  the red line will be hard-clipped, even with the knee, even with "super soft"
- mode enabled.
+ mode activated.
  
  The green bar in the metering section reflects the incoming audio signal of a
  plugin input channel. The blue bar underneath it reflects the outgoing signal

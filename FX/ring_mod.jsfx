@@ -1,5 +1,5 @@
 desc:       Ring Mod
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       effect fx modulation distortion
 link:       https://github.com/chkhld/jsfx/
@@ -74,7 +74,7 @@ slider9:dBTrim=0<-12,12,0.0001>Trim [dB]
   
   // RANDOMIZATION -------------------------------------------------------------
   //
-  // Returns a randomized value in range [-limit,+limit]
+  // Returns a randomised value in range [-limit,+limit]
   //
   function random (limit) (rand() * 2.0 * limit - limit);
   
@@ -189,7 +189,7 @@ slider9:dBTrim=0<-12,12,0.0001>Trim [dB]
   // Instability factor [0,10]
   variation = pctIns * 0.005;
   
-  // LP Filter to stabilize the instability (duh)
+  // LP Filter to stabilise the instability (duh)
   lpInstability.rcLP(srate, 10 + (90 * variation));
   
   // Instability noise floor level in feedback path [-dB]
@@ -230,8 +230,8 @@ slider9:dBTrim=0<-12,12,0.0001>Trim [dB]
     unstable ?
     (
       // Calculate and slow down instability offset for carrier oscillator
-      randomize   = (random(ctrFreq) * invSrate) * variation;
-      instability = lpInstability.rcTick(randomize);
+      randomise   = (random(ctrFreq) * invSrate) * variation;
+      instability = lpInstability.rcTick(randomise);
     );
     
     // Update carrier oscillator frequency, add instability

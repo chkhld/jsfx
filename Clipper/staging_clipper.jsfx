@@ -124,7 +124,7 @@ slider6:dBtrim=0<-24,24,0.01>Output trim [dB]
   
   // The actual clipping function.
   //
-  // This could be optimized into a single line, but I'll leave it
+  // This could be optimised into a single line, but I'll leave it
   // spread over several lines in order to explain what's going on.
   function clip (sample) local (polarity)
   (
@@ -136,19 +136,11 @@ slider6:dBtrim=0<-24,24,0.01>Output trim [dB]
     
     // Clip the boosted sample to stay below the ceiling.
     //
-    // Instead of slow and expensive conditional if/elseif/etc. branching,
-    // this uses a highly performant set of additions and multiplications
-    // which amounts to the same as conditional branching. If the type==x
-    // conditions are false i.e. 0, the function they're multiplied by is
-    // not even called, let alone processed or evaluated. 0 * anything is 
-    // always 0, so the entire ((type==x) * something) is optimized to 0.
-    // Only where the type==x condition is true i.e. 1, the function will
-    // actually be processed and evaluated - and multiplied by 1 which of 
-    // course will also be optimized out, because 1 * something is always
-    // just that something. Ess emm arr tee.
-    sample = (type==0) * sineClip(sample) + 
-             (type==1) * softClip(sample) + 
-             (type==2) * hardClip(sample);
+    (type == 0) ? (sample = sineClip(sample))
+    :
+    (type == 1) ? (sample = softClip(sample))
+    :
+    (type == 2) ? (sample = hardClip(sample));
     
     // Apply the make-up gain that will shift the output level up or down 
     // based on where the ceiling is, so that the output ceiling always

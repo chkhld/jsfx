@@ -1,5 +1,5 @@
 desc:       Telephone
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing filter compression distortion saturation lofi
 link:       https://github.com/chkhld/jsfx/
@@ -42,7 +42,7 @@ out_pin:right output
   pi = $PI;
   halfPi = pi * 0.5;
   
-  // Conversion between Decibels and float gain factos
+  // Conversion between Decibels and float amplitudes
   //
   // Converts dB values to float gain factors. Divisions
   // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
@@ -55,13 +55,9 @@ out_pin:right output
   // Converts float gain factors to dB values
   function gainTodB (float) local (below) (log(max(floatFloor, abs(float))) * M_LN10_20);
   
-  // Accelerated 1/x calculation
-  //
-  function fastReciprocal (value) (sqr(invsqrt(value)));
-  
   // RANDOMIZATION
   //
-  // Returns a randomized value between [-limit,+limit]
+  // Returns a randomised value between [-limit,+limit]
   //
   function random (limit) (rand() * 2.0 * limit - limit);  
   
@@ -125,8 +121,8 @@ out_pin:right output
   function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
   (
     // Set attack and release time coefficients
-    coeffAtt = exp(-1000 * fastReciprocal(msAttack  * srate));
-    coeffRel = exp(-1000 * fastReciprocal(msRelease * srate));
+    coeffAtt = exp(-1000 / (msAttack  * srate));
+    coeffRel = exp(-1000 / (msRelease * srate));
   );
   //
   // This calculates the new envelope state for the current sample.
@@ -159,7 +155,7 @@ out_pin:right output
   function gainCalcSetup (dBThreshold, fullRatio, dBRange) instance (threshold, ratio, makeup, range) local ()
   (
     threshold = dBThreshold;            // signed dBfs
-    ratio = fastReciprocal(fullRatio);  // 1/x --> compression < 1, expansion > 1
+    ratio = 1.0 / fullRatio;  // 1/x --> compression < 1, expansion > 1
     makeup = dBToGain(abs((threshold + (abs(threshold) * ratio)) * 0.4)); // 0.5 went too loud too quickly
     range = dBRange; // signed dBfs
   );
@@ -272,7 +268,7 @@ out_pin:right output
   compLowRelease = 100.0;
   
   compRatio      = 30.0;
-  autoGain       = 0; // 0 = enabled, 1 = disabled
+  autoGain       = 0; // 0 = activated, 1 = deactivated
   
   // Compressor sidechain HP filter settings
   compHPfreq = 750;
@@ -421,7 +417,7 @@ out_pin:right output
     spl0 *= trim;
     spl1 *= trim;
     
-    // If output hard clipping enabled
+    // If output hard clipping activated
     (outClip == 1) ?
     (
       spl0.hardclip();

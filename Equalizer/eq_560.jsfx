@@ -1,5 +1,5 @@
 desc:       EQ 560
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing equalizer eq analog console
 link:       https://github.com/chkhld/jsfx/
@@ -7,7 +7,7 @@ screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/eq_560.p
 about:
  # EQ 560
  
- Classic American 10-band graphic console equalizer.
+ Classic American 10-band graphic console equaliser.
  Limited flexibility, fast and streamlined workflow.
  
  Applies 2x oversampling for accurate high frequency
@@ -41,9 +41,6 @@ out_pin:Output R
   // Converts dB values to float gain factors.
   // Divisions are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
   function dBToGain (decibels) (pow(10, decibels * 0.05));
-  
-  // Accelerated 1/x calculation
-  function fastReciprocal (value) (sqr(invsqrt(value)));
   
   // VARIOUS INTERPOLATION METHODS ---------------------------------------------
   //
@@ -132,8 +129,8 @@ out_pin:Output R
   function attRelSetup (msAttack, msRelease) instance (coeffAtt, coeffRel) local ()
   (
     // Set attack and release time coefficients
-    coeffAtt = exp(-1000 * fastReciprocal(msAttack  * srate));
-    coeffRel = exp(-1000 * fastReciprocal(msRelease * srate));
+    coeffAtt = exp(-1000 / (msAttack  * srate));
+    coeffRel = exp(-1000 / (msRelease * srate));
   );
   //
   // This calculates the new envelope state for the current sample.

@@ -1,5 +1,5 @@
 desc:       Stereo Checker
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       utility analysis meter mono stereo
 link:       https://github.com/chkhld/jsfx/
@@ -9,7 +9,7 @@ about:
  
  Displays the inter-channel relation of a two-channel input signal.
  
- Super simple monitoring tool that analyzes the audio going into it and tells
+ Super simple monitoring tool that analyses the audio going into it and tells
  you the relation of the two input channels.
  
  So... why would you want this?
@@ -42,7 +42,7 @@ about:
  longer portions of audio, to see if what looks like a normal mono signal for
  the most part really doesn't have some stereo sound effect or section burned
  into it somewhere. Or just keep it on the master all the time by default, it
- doesn't use any worthwile CPU resources anyway. :)
+ doesn't use any worthwhile CPU resources anyway. :)
 
 // ----------------------------------------------------------------------------
 // This plugin only needs input pins, it writes no output
@@ -70,18 +70,18 @@ options:no_meter
   gfx_x = 0;
   gfx_y = 0;
   
-  // Set foreground colour to light gray
+  // Set foreground colour to light grey
   gfxColour(150,150,150);
   
   // Set the font to use, make its size relative to the window height
   gfx_setfont(1, "Arial", gfx_h / 3);
   
-  // Draw text over the full window, centered horizontally and vertically
+  // Draw text over the full window, centred horizontally and vertically
   gfx_drawstr(channelText, 1|4, gfx_w, gfx_h);
   
 @sample
   
-  // Analyze the relation of the current two input samples
+  // Analyse the relation of the current two input samples
   silenceCh1 = (spl0 == 0);
   silenceCh2 = (spl1 == 0);
   equal      = (spl0 == spl1);

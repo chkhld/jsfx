@@ -1,5 +1,5 @@
 desc:       Foldback Distortion
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing distortion foldback
 link:       https://github.com/chkhld/jsfx/
@@ -27,7 +27,7 @@ about:
 // ----------------------------------------------------------------------------
 slider1:dBCeiling=0<-48, 0,0.01> Ceiling dBfs
 slider2:dBBoost=0<  0,48,0.01> Boost dB
-slider5:blocker=0<0,1,{Enabled,Disabled}> DC Blocker
+slider5:blocker=0<0,1,{Activated,Deactivated}> DC Blocker
 
 in_pin:left input
 in_pin:right input
@@ -37,7 +37,7 @@ out_pin:right output
 @init
   
   // Decibel to gain factor conversion
-  function dBToGain (decibels) (10.0 ^ (decibels / 20.0));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   function foldback () instance (signum)
   (
@@ -78,7 +78,7 @@ out_pin:right output
   spl0.foldback();
   spl1.foldback();
   
-  // If DC blocking enabled
+  // If DC blocking activated
   blocker == 0 ?
   (
     // Run the DC blocker on each sample

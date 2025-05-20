@@ -1,5 +1,5 @@
 desc:       MIDI Chord Trigger
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       midi utility chords
 link:       https://github.com/chkhld/jsfx/
@@ -573,7 +573,7 @@ out_pin:none
           );
         );
         
-        // Increment "note of chord" interator
+        // Increment "note of chord" iterator
         chord_note_nr = chord_note_nr + 1;
       );
       

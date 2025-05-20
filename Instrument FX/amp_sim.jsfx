@@ -1,5 +1,5 @@
 desc:       Amp Sim
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       guitar bass amplifier distortion
 link:       https://github.com/chkhld/jsfx/
@@ -51,7 +51,7 @@ slider3:ovs=1<0,4,1{Off,2x,4x,8x,16x}> Oversampling
 slider4:filter=1<0,3,1{Relaxed,Normal,Heavy,Insane}> Ovs. Filtering
 slider6:inGate=-96<-96,0,0.02> Gate Threshold [dB]
 slider7:gatePos=0<0,2,1{Input (pre pedal),Output (post amp),Triggered (detect pre & gate post)}> Gate Position
-slider9:booster=0<0,1,1{Bypass,Enabled}> Pedal Boost
+slider9:booster=0<0,1,1{Bypass,Activated}> Pedal Boost
 slider10:volIn=50<0, 100, 0.01> Input Gain [%]
 slider12:eqLow=0<-1,1,0.01> Low : EQ
 slider13:eqMid=0<-1,1,0.01> Mid : EQ
@@ -72,10 +72,7 @@ out_pin:Output R
   math.twoPi = $PI * 2.0;
   
   // Convert Decibel values to float gain factors
-  function dBToGain (decibels) (10.0 ^ (decibels * 0.05)); // 1*0.05 = 1/20
-  
-  // Accelerated 1/x calculation
-  function fastReciprocal (value) (sqr(invsqrt(value)));
+  function dBToGain (decibels) (pow(10, decibels * 0.05)); // 1*0.05 = 1/20
   
   // HARD CLIPPING -------------------------------------------------------------
   //
@@ -91,7 +88,7 @@ out_pin:Output R
   function soft (sample) local (exp2x)
   (
     exp2x = exp(2.0 * sample);
-    (exp2x - 1.0) * fastReciprocal(exp2x + 1.0);
+    (exp2x - 1.0) / (exp2x + 1.0);
   );
   
   // VARIOUS INTERPOLATION METHODS
@@ -332,7 +329,7 @@ out_pin:Output R
       amp.eq.presenceL.eqPK(oversampling.srate, 6000, 0.25, 12.0);
       amp.eq.presenceR.eqPK(oversampling.srate, 6000, 0.25, 12.0);
       
-      // Once all the filters have been updated, disable the recalc flag
+      // Once all the filters have been updated, deactivate the recalc flag
       // so that this function doesn't re-initialize all settings again,
       // just because then next sample comes in.
       filters.recalculate = 0;
@@ -402,8 +399,8 @@ out_pin:Output R
   //
   function envSetup (SR, msAttack, msRelease) instance (envelope, attack, release) local ()
   (
-    attack  = pow(0.01, fastReciprocal( msAttack * SR * 0.001 ));
-    release = pow(0.01, fastReciprocal(msRelease * SR * 0.001 ));
+    attack  = pow(0.01, 1.0 / ( msAttack * SR * 0.001 ));
+    release = pow(0.01, 1.0 / (msRelease * SR * 0.001 ));
   );
   //
   // This calculates the new envelope state for the current sample.
@@ -697,7 +694,7 @@ out_pin:Output R
   silenceCounterL = (spl0 != 0) ? 0 : (silenceCounterL + (silenceCounterL < srate));
   silenceCounterR = (spl1 != 0) ? 0 : (silenceCounterR + (silenceCounterR < srate));
   //
-  // If a channel is silent for longer than a second, disable processing
+  // If a channel is silent for longer than a second, deactivate processing
   silenceCounterL == srate ? procL = 0;
   silenceCounterR == srate ? procR = 0;
   

@@ -1,5 +1,5 @@
 desc:       Sine Clipper
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing gain amplitude clipper distortion saturation
 link:       https://github.com/chkhld/jsfx/
@@ -54,7 +54,7 @@ about:
  those aforementioned sigmoids tend to cause. The transition into distortion
  also happens noticeably smoother.
  
- TL;DR: More headroom, louder signal, fewer artifacts, softer clipping onset,
+ TL;DR: More headroom, louder signal, fewer artefacts, softer clipping onset,
  less "buzz". There's no reason to keep using regular sigmoid-based clippers
  anymore like a basic boomer. ;)
 
@@ -68,11 +68,10 @@ slider2:dBGain=0<-48,48,0.01>Boost [dB]
 @init
   
   // Convenience variables for CPU economy during processing
-  halfPi     = $pi * 0.5;
-  oneOverSix = 1/6;
+  halfPi = $pi * 0.5;
   
   // Converts dB values to float gain factors
-  function dBToGain (decibels) (pow(2, decibels * oneOverSix));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   // SINE CLIPPING -------------------------------------------------------------
   //

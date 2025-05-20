@@ -1,5 +1,5 @@
 desc:       Wave Scope
-version:    1.8.2c
+version:    1.8.3
 author:     chokehold
 tags:       utility metering visualization scope amplitude
 link:       https://github.com/chkhld/jsfx/
@@ -7,7 +7,7 @@ screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/wave_sco
 about:
  # Wave Scope
  
- Waveform display that can visualize various mono/stereo channel streams as Decibels 
+ Waveform display that can visualise various mono/stereo channel streams as Decibels 
  and signed or absolute samples. With fadeable colours and freeze-on-pause function.
  This means the colour of the waveform could be controlled by parameter modulation,
  and when you pause playback, the waveform won't continue updating or vanish.
@@ -44,7 +44,7 @@ out_pin:none
   colourG = 0; // Green colour default amount [0,1]
   colourB = 0; // Blue colour default amount [0,1]
   
-  // Conversion between Decibels and float gain factos
+  // Conversion between Decibels and float amplitudes
   //
   // Converts dB values to float gain factors. Divisions
   // are slow, so: dB/20 --> dB * 1/20 --> dB * 0.05
@@ -66,7 +66,7 @@ out_pin:none
   // Rescales a value from a defined arbitrary range to range [0,1]
   // and can "weight" the scale by setting a center value.
   // 
-  function normalize (low, high, value, center) local (proportion, skew)
+  function normalise (low, high, value, center) local (proportion, skew)
   (
     proportion = (value - low) / (high - low);
     skew = log(0.5) / log10((center - low) / (high - low));

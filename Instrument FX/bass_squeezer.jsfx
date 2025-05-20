@@ -1,5 +1,5 @@
 desc:       Bass Squeezer
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       bass distortion compression multiband filter
 link:       https://github.com/chkhld/jsfx/
@@ -347,7 +347,7 @@ out_pin:Output R
     // Process high band high-cut
     wetHi = hcL.lr4Tick(wetHi);
     
-    // If low band squeeze enabled
+    // If low band squeeze activated
     (loWet > 0.0) ? 
     (
       // Apply compression to low band
@@ -357,7 +357,7 @@ out_pin:Output R
       wetLo = (loDry * wetLo) + (loWet * sineClip(wetLo));
     );
     
-    // If high band squeeze enabled
+    // If high band squeeze activated
     (hiWet > 0.0) ?
     (
       // Apply drive (and compensation) to high band

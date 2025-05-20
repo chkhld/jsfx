@@ -1,5 +1,5 @@
 desc:       Gate/Expander
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing gate expander dynamics gain
 link:       https://github.com/chkhld/jsfx/
@@ -11,7 +11,7 @@ about:
  the same, with the main difference that when a gate closes,
  it closes all the way to silence - but expanders only close
  down to certain level. A gate is like an extreme flavour of
- expander, and an expander is like a soft type of nosie gate.
+ expander, and an expander is like a soft type of noise gate.
  
  Why do you need both, and when would you use which? Simple.
  
@@ -25,13 +25,13 @@ about:
  of those microphones will have recorded "bleed" from other
  kit pieces in the room, e.g. there will be cymbal noise on
  the kick and vice versa. Rigorously cutting away everything
- from every track that wasn't intended to be ther will make
+ from every track that wasn't intended to be there will make
  the combined mix of those tracks sound artificial and void
  of any life, and it will throw your mix out of balance. It
  just doesn't feel natural if everything is super clean and
  trimmed, and suddenly there's a hit on the tom that sets a
  few gates off that shouldn't have been set off, and right
- then is when your entire panorama mix and equalization are
+ then is when your entire panorama mix and equalisation are
  done for. So in such cases, it may be more desirable to not
  let the attenuation happen down to full silence, but rather
  only for a limited range. So if many microphones are active
@@ -42,7 +42,7 @@ about:
  
  The Hysteresis is something like a little grace period when
  the gate/expander is about to close. Instead of stubbornly
- insisting on shutting the volume down becaue the signal has
+ insisting on shutting the volume down because the level has
  just fallen below the magic threshold, the Hysteresis will
  let the signal fall just a few more dB below the threshold
  before the release envelope is triggered. This can be very
@@ -76,7 +76,7 @@ about:
  
  The stereo linking features is only active in the first two
  routing options, i.e. Stereo with internal/external SC. It
- uses "louder channel" priorization, so whichever channel is
+ uses "louder channel" priorisation, so whichever channel is
  louder will open/close the gate/expander for both channels.
  
  Just for fun, I added a primitive high-pass filter into the
@@ -115,14 +115,13 @@ slider9:routing=0<0,3,{Stereo (internal SC),Stereo (external SC 3-4),Mono (L),Mo
   keyR = 0.0;
   
   // Helper functions
-  function dBToGain       (decibels)    (10.0 ^ (decibels / 20.0));
-  function fastReciprocal (value)       (sqr(invsqrt(value)));
+  function dBToGain (decibels) (pow(10, decibels * 0.05));
   
   // Simple envelope follower, setup stage
   function envSetup (msAttack, msRelease, dBThreshold, dBHysteresis) instance (envelope, attack, release, hysteresis, threshold) local ()
   (
-    attack  = exp(-1000 * fastReciprocal(msAttack  * srate));
-    release = exp(-1000 * fastReciprocal(msRelease * srate));
+    attack  = exp(-1000 / (msAttack  * srate));
+    release = exp(-1000 / (msRelease * srate));
     hysteresis = dBToGain(dBHysteresis);
     threshold  = dBToGain(dBThreshold);
   );
