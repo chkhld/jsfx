@@ -1,0 +1,174 @@
+desc:       Loud Clipper
+version:    1.8.3
+author:     chokehold
+tags:       processing gain amplitude clipper distortion saturation
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/loud_clipper.png
+about:
+ # Loud Clipper
+ 
+ JSFX Implementation of the original "Loud" algorithm from my "ClipMax" plugin,
+ both nowadays long defunct and abandoned: https://free.chokehold.net/clipmax/
+ 
+ Additionally comes with the slightly louder "Loud 2" algorithm, and the so far
+ loudest variant, "Louder".
+ 
+ The "Louder" algo has an additional "Intensity" parameter, it's effectively an
+ accelerator that distorts the transfer curve into "fast first, slow later" and
+ lifts low-volume signal parts above the linear curve and adds a sort-of static
+ upward compression. If you have a decently loud signal, try turning "Intensity"
+ up instead of input Gain, maybe even dialing Gain back, and see how that fares.
+ 
+ Most other aspects of this plugin are straight-forward: the Gain is input gain,
+ the Trim is output volume, the Ceiling is the maximum output level.
+ 
+ Careful with the Ceiling, it's like a reverse input Gain, the two sum together.
+ If you bring down the Ceiling by a few dB, it's like raising the input Gain by
+ a few dB. So to not always have to re-visit the parameter, best make your mind
+ up early which one you prefer. :)
+
+// ----------------------------------------------------------------------------
+slider1:dBGain=0<-48,48,0.01>Gain [dB]
+slider2
+slider3:method=1<0,2,{Loud (legacy),Loud 2,Louder}>Algorithm
+slider4:pctIntensity=25<0,100,0.1:log=25>-Intensity [%]
+slider5
+slider6:dBCeil=0<-48,0,0.01:log=-6>Ceiling [dBfs]
+slider7:dBTrim=0<-48,48,0.01>Trim [dB]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts dB values to float amplitude values
+  function dBToAmp (decibels) (pow(10, decibels * 0.05));
+  
+  // HYPERBOLIC TANGENT APPROXIMATION -----------------------------------------
+  //
+  //  Implemented after code posted by Antto on KVR
+  //  https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
+  //
+  function tanh (number) local (xa, x2, x3, x4, x7, res)
+  (
+    xa = abs(number); x2 = xa * xa; x3 = x2 * xa; x4 = x2 * x2; x7 = x4 * x3;
+    res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
+    sign(number) * res;
+  );
+  
+  // HYPERBOLIC SINE FUNCTION -------------------------------------------------
+  //
+  //  Implemented after NumPy
+  //  https://numpy.org/doc/stable/reference/generated/numpy.sinh.html
+  //
+  function sinh (number)
+  (
+    0.5 * (exp(number) - exp(-number));
+  );
+  
+  // ERROR FUNCTION -----------------------------------------------------------
+  //
+  //  Implemented after Stack Overflow
+  //  https://stackoverflow.com/a/457805
+  //
+  function erf (x) local (polarity, absolute, a1, a2, a3, a4, a5, p, t, y)
+  (
+    (x != 0) * // To avoid DC offset - if (x==0) {return 0;}
+    (
+      polarity = sign(x);
+      absolute = abs(x);
+      
+      a1 =  0.254829592;
+      a2 = -0.284496736;
+      a3 =  1.421413741;
+      a4 = -1.453152027;
+      a5 =  1.061405429;
+      p  =  0.3275911;
+      t  =  1.0 / (1.0 + p * absolute);
+      
+      polarity * (1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * exp(-absolute * absolute));
+    );
+  );
+  
+  // LOUD CLIPPING ------------------------------------------------------------
+  //
+  //  Sigmoid curve distortion that stays close to the linear signal very long.
+  //  Used in original VST2/AU ClipMax plugin.
+  // 
+  function loudClip (sample)
+  (
+    tanh(0.55 * sinh(1.75 * sample));
+  );
+  
+  // LOUD2 CLIPPING -----------------------------------------------------------
+  //
+  //  Sigmoid curve distortion that stays close to the linear signal very long.
+  //  Successor to the original ClipMax plugin "Loud" algorithm.
+  // 
+  function loudClip2 (sample)
+  (
+    erf(0.54 * sinh(1.6 * sample));
+  );
+  
+  // LOUDER CLIPPING
+  //
+  //  Super simple, super loud. By "accelerating" the input sample the transfer
+  //  curve can be "boosted" over the linear, in contrast to most other methods 
+  //  that usually stay inside of the linear. A little bit of this is also part
+  //  of the older loud1/loud2 algorithms, but always tamed with the countering
+  //  hyperbolic sine curve again. It's effectively like adding a bit of static
+  //  upward compression.
+  // 
+  function louderClip (sample, factor)
+  (
+    erf(sample * factor);
+  );
+
+@slider
+  
+  // Turns slider dB values into amplitude values
+  gain = dBToAmp(dBGain);
+  wall = dBToAmp(dBCeil);
+  trim = dBToAmp(dBTrim);
+  
+  // Louder Clipping allows a boost factor parameter, other methods don't.
+  slider_show(pctIntensity, (method == 2));
+  
+  // Boost factor for the Louder Clipping algorithm.
+  // Ranges from 1/4π to ~2 = 0.6366197724π = (0.25+0.3866197724)π.
+  louder_factor = $pi * (0.25 + pctIntensity * 0.003866197724);
+  
+  // Pre-clip boost factor to fake ceiling with soft clipping functions
+  wallBoost = 1.0 / wall;
+  
+@sample
+  
+  // Louder Clipping allows a boost factor parameter, other methods don't.
+  // Not reliable enough to do this only in @slider, sadly.
+  slider_show(pctIntensity, (method == 2));
+  
+  // Set channel counter to 0 to start with first input channel
+  channel = 0;
+  
+  // Cycle through all of the plugin's input channels
+  while (channel < num_ch)
+  (
+    // Fetch the channel's sample and apply fake ceiling boost and input gain
+    channelSample = spl(channel) * wallBoost * gain;
+    
+    // Loud (legacy; tanh+sinh)
+    (method == 0) ? (channelClipped = loudClip(channelSample))
+    :
+    // Loud 2 (erf+sinh)
+    (method == 1) ? (channelClipped = loudClip2(channelSample))
+    :
+    // Louder (erf)
+    (method == 2) ? (channelClipped = louderClip(channelSample, louder_factor));
+    
+    // Apply fake ceiling compensation and output Trim, then write to output sample
+    spl(channel) = channelClipped * wall * trim;
+    
+    // Increment counter to next channel
+    channel += 1;
+  );
+
