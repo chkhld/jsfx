@@ -1,5 +1,5 @@
 desc:       Signal Crusher
-version:    1.8.2
+version:    1.8.3
 author:     chokehold
 tags:       processing bit depth crusher resampling dither lofi
 link:       https://github.com/chkhld/jsfx/
@@ -28,17 +28,31 @@ about:
  related section is also operative. If downsampling or
  reconstruction are set to "off", the filters won't do
  anything.
+ 
+ Since version 1.8.3 there are now input/output volume
+ controls and a tilt EQ with flexible centre frequency.
+ For simplicity of use, I've commented out the sliders
+ to control the tilt filters' Q width and max dB range,
+ feel free to un-comment them below.
 
 // ----------------------------------------------------------------------------
-slider1:down=1<0,4,{Off,Repeat samples,Drop samples,Linear interpolation,Cosine interpolation}> Downsampling
-slider2:dnFilt=1<0,2,{Off,Pre,Post}> Downsampling filter
-slider3:up=0<0,2,{Off,Linear interpolation,Cosine interpolation}> Reconstruction
-slider4:upFilt=0<0,2,{Off,Pre,Post}> Reconstruction filter
-slider5:ratio=20<32,1,1> Resampling factor [SR / x]
-slider6:outSR=0<0,0,0.01> Downsampled to [Hz]
-slider7:bits=10<0,24,0.001> Bit reduction
-slider8:dither=100<0,100,0.01> Bit dithering [%]
-slider9:blank=1<0,1,{Off,On}> Auto blanking
+slider1:down=1<0,4,{Off,Repeat samples,Drop samples,Linear interpolation,Cosine interpolation}>Downsampling
+slider2:dnFilt=1<0,2,{Off,Pre,Post}>Downsampling filter
+slider3:up=0<0,2,{Off,Linear interpolation,Cosine interpolation}>Reconstruction
+slider4:upFilt=0<0,2,{Off,Pre,Post}>Reconstruction filter
+slider5:ratio=20<32,1,1>Resampling factor [SR / x]
+slider6:outSR=0<0,0,0.01>Downsampled to [Hz]
+slider7:bits=10<0,24,0.001>Bit reduction
+slider8:dither=100<0,100,0.01>Bit dithering [%]
+slider9:blank=1<0,1,{Off,On}>Auto blanking
+slider10
+slider11:hzTilt=1000<100,10000,0.1:log=1000>Tilt EQ centre [Hz]
+slider12:eqTilt=0<-1,1,0.01>Tilt EQ lean \ -- /
+//slider13:tiltQ=0.5<0.1,3,0.01:log=0.5>Tilt Q
+//slider14:tiltRange=6<6,48,1>Tilt Range
+slider15
+slider16:dBGain=0<-24,24,0.01>Input gain [dB]
+slider17:dBTrim=0<-24,24,0.01>Output trim [dB]
 
 in_pin:left input
 in_pin:right input
@@ -46,6 +60,10 @@ out_pin:left output
 out_pin:right output
 
 @init
+  
+  // Converts signed Decibels to float amplitude value
+  //
+  function dBToAmp (decibels) (pow(10, decibels * 0.05));
   
   // CLAMPING i.e. hard clipping
   function clamp (ceiling)
@@ -55,7 +73,7 @@ out_pin:right output
   
   // SAMPLE RANDOMIZATION
   //
-  // Returns a randomized sample value between [-limit,+limit]
+  // Returns a randomised sample value between [-limit,+limit]
   // which can be used as basic white noise.
   //
   function random (limit) (rand() * 2.0 * limit - limit);
@@ -178,7 +196,7 @@ out_pin:right output
   // with interpolation (=taking two samples and figuring
   // out values at intermediate positions).
   // 
-  // Stuffing the downsampled signal with more bew samples
+  // Stuffing the downsampled signal with more new samples
   // will bring it back to the original sample rate again,
   // but at reduced precision i.e. sounding degraded.
   // 
@@ -314,7 +332,7 @@ out_pin:right output
       step += 1;
     );
   );
-  
+  //
   function bwTick (sample) instance (a, d1, d2, w0, w1, w2, stack) local (output, step)
   (
     output = sample; step = 0;
@@ -327,11 +345,73 @@ out_pin:right output
     output;
   );
   
+  // ORFANIDIS BIQUAD FILTERS
+  //
+  //  Implementation and compensation notice
+  //
+  // Per-sample processing function
+  function orfanidisTick (sample) instance (a1, a2, b0, b1, b2, x1, x2, y1, y2) local (output)
+  (
+    output = b0 * sample + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+    
+    x2 = x1;
+    x1 = sample;
+    y2 = y1;
+    y1 = output;
+    
+    output;
+  );
+  //
+  // High shelf filter
+  function orfanidisHS (SR, Hz, Q, dB) instance (a1, a2, b0, b1, b2, x1, x2, y1, y2) local (G0, omega0, omega_c)
+  (
+    G0 = pow(10, dB/20);
+    omega0 = 2 * $pi * Hz/SR;
+    omega_c = tan(omega0/2);
+    
+    b0 = G0 + sqrt(G0)*omega_c/Q + omega_c*omega_c;
+    b1 = 2*(omega_c*omega_c - G0);
+    b2 = G0 - sqrt(G0)*omega_c/Q + omega_c*omega_c;
+    
+    a0 = 1 + sqrt(G0)*omega_c/Q + omega_c*omega_c;
+    a1 = 2*(omega_c*omega_c - 1);
+    a2 = 1 - sqrt(G0)*omega_c/Q + omega_c*omega_c;
+    
+    // Normalize and store coefficients
+    a1 /= a0; a2 /= a0; b0 /= a0; b1 /= a0; b2 /= a0;
+    
+    // Reset filter instance state buffers
+    x1 = x2 = y1 = y2 = 0.0;
+  );
+  //
+  // Low shelf filter
+  function orfanidisLS (SR, Hz, Q, dB) instance (a1, a2, b0, b1, b2, x1, x2, y1, y2) local (G0, omega0, omega_c, beta)
+  (
+    G0 = pow(10, dB/20);
+    omega0 = 2 * $pi * Hz/SR;
+    omega_c = tan(omega0/2);
+    
+    // Add slope control through Q
+    b0 = G0*omega_c*omega_c + sqrt(G0)*omega_c/Q + 1;
+    b1 = 2*(G0*omega_c*omega_c - 1);
+    b2 = G0*omega_c*omega_c - sqrt(G0)*omega_c/Q + 1;
+    
+    a0 = omega_c*omega_c + sqrt(G0)*omega_c/Q + 1;
+    a1 = 2*(omega_c*omega_c - 1);
+    a2 = omega_c*omega_c - sqrt(G0)*omega_c/Q + 1;
+    
+    // Normalize and store coefficients
+    a1 /= a0; a2 /= a0; b0 /= a0; b1 /= a0; b2 /= a0;
+    
+    // Reset filter instance state buffers
+    x1 = x2 = y1 = y2 = 0.0;
+  );
+  
   // DC BLOCKING FILTER
   //
   // Resampling will cause aliasing, meaning frequencies above
   // a certain point will start ping-pong reflecting around in
-  // the frequency spectum. Some frequencies might even become
+  // the frequency spectrum. Some frequencies might even become
   // apparent in the sub 10 Hz range, worst case even 0 Hz.
   //
   // A 0 Hertz signal part essentially means the entire signal
@@ -347,11 +427,29 @@ out_pin:right output
     this = stateOut;
   );
   
-  // Setting up the auto-blanking envelopes
+  // Set up the auto-blanking envelopes
   evnAutoBlankL.envSetup(10, 300);
   envAutoBlankR.envSetup(10, 300);
+  
+  // Set up tilt EQ filters
+  //
+  // Pre-defined values (un-comment sliders up top to override)
+  tiltQ = 0.1;    // Per-shelf width/resonance (0.1 wide, 2 narrow)
+  tiltRange = 12; // Per-shelf maximum +/- dB Range
+  //
+  function setupTiltFilters (SR, Hz, Q, dBls, dBhs)
+  (
+    tiltLeftHS.orfanidisHS (SR, Hz, Q, dBhs);
+    tiltRightHS.orfanidisHS(SR, Hz, Q, dBhs);
+    tiltLeftLS.orfanidisLS (SR, Hz, Q, dBls);
+    tiltRightLS.orfanidisLS(SR, Hz, Q, dBls);
+  );
 
 @slider
+  
+  // Convert level adjustments from dB into amplitude values
+  inputGain  = dBToAmp(dBGain);
+  outputTrim = dBToAmp(dBTrim);
   
   // The target sample rate after downsampling
   outSR = srate / ratio;
@@ -384,7 +482,18 @@ out_pin:right output
   lpUpL.bwLP(upFilterCutoff, 8, 103000);
   lpUpR.bwLP(upFilterCutoff, 8, 104000);
   
+  // Calculate Tilt EQ parameters
+  tiltGainLS = -eqTilt * tiltRange;
+  tiltGainHS =  eqTilt * tiltRange;
+  
+  // Set up Tilt EQ filters with new parameters
+  setupTiltFilters(srate, hzTilt, tiltQ, tiltGainLS, tiltGainHS);
+  
 @sample
+  
+  // Apply input gain to incoming samples
+  spl0 *= inputGain;
+  spl1 *= inputGain;
   
   // First off, generate the auto-blanking envelope. If signal
   // is present, make the envelope approach 1. If no signal is
@@ -452,9 +561,9 @@ out_pin:right output
     // Add dithering noise to the signal, levelled correctly
     // for the selected bit depth. If auto-blanking is active,
     // pass in the current signal envelope, otherwise just 1.
-    // If auto-blanking is enabled and the signal drops quiet,
+    // If auto-blanking is activated and the signal drops quiet,
     // the dithering noise will also fade to silence. If auto-
-    // blanking is disabled, the dithering noise is constantly
+    // blanking is deactivated, the dithering noise is constantly
     // audible, even if the signal drops to silence.
     spl0.ditherNoise((blank == 1) ? envAutoBlankL.envelope : 1);
     spl1.ditherNoise((blank == 1) ? envAutoBlankR.envelope : 1);
@@ -470,3 +579,19 @@ out_pin:right output
   // to guarantee that no sample beyond -/+ 1.0 sneaks past.
   spl0.clamp(1);
   spl1.clamp(1);
+  
+  // Apply Tilt EQ if active
+  (eqTilt != 0) ?
+  (
+    // Left channel
+    spl0 = tiltLeftLS.orfanidisTick(spl0);
+    spl0 = tiltLeftHS.orfanidisTick(spl0);
+    
+    // Right channel
+    spl1 = tiltRightLS.orfanidisTick(spl1);
+    spl1 = tiltRightHS.orfanidisTick(spl1);
+  );
+  
+  // Apply output trim to processed samples
+  spl0 *= outputTrim;
+  spl1 *= outputTrim;
