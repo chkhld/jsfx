@@ -1,0 +1,292 @@
+desc:       String Tuning Calculator
+version:    1.8.3
+author:     chokehold
+tags:       guitar bass tuner tuning frequency pitch utility
+link:       https://github.com/chkhld/jsfx/
+screenshot: https://github.com/chkhld/jsfx/blob/main/assets/screenshots/string_tuning_calculator.png
+about:
+ # String Tuning Calculator
+ 
+ A nifty little utility to quickly calculate MIDI note numbers, 
+ note names and their frequencies from a guitar/bass tuning. Or
+ to use as a super-accurate and super-flexible tuner.
+ 
+ The original idea was to have this as a reference to tune drum
+ kits after. Kicks, snares, toms, they all hit hardest in a mix
+ if they're tuned to notes in the scale of other instruments in
+ the song.
+ 
+ So you load this little utility, set up the guitar/bass tuning,
+ set up the root note of the song, or another note in the scale,
+ and find out what frequency your kick/snare should be tuned to.
+ 
+ But that was just the beginning, there's more.
+ 
+ You can use this tool to calculate which frequencies to cut or
+ boost in an EQ, or to know which MIDI note corresponds to what
+ you're playing on the instrument.
+ 
+ If you activate the "Listen to pitch" box, you can use this as
+ a normal tuner, or to check the intonation on your instrument.
+ 
+ OK, let me walk you through this.
+ 
+ First you pick a tuning standard, most commonly 440 Hz, others
+ are available. If you don't know what this is, just leave it.
+ 
+ The next slider is a global tune offset. If for any reason you
+ need to tune your instrument to an exact pitch that's a little
+ bit quirky and does not fall into an exact semitone, then this
+ Cent-based detune offset slider would allow you to handle that.
+ 
+ The following block of 3 sliders lets you set the note that is
+ played on the instrument.
+ 
+ String note name: just the name of the note, C-D-E-F-G... etc.
+ the string of your instrument is tuned to.
+ 
+ String octave - which octave is the string tuned to? If you're
+ going for e.g. standard tuning of the low E string on a guitar,
+ you would set these to E2. If you want the tuning of the low B
+ string on a 5-string bass, you'd set this to B0. See the table
+ below for some reference values:
+ 
+ | MIDI | Name | Instrument String       |
+ |------|------|-------------------------|
+ |  40  |  E2  | Guitar E low            |
+ |  45  |  A2  | Guitar A                |
+ |  50  |  D3  | Guitar D                |
+ |  55  |  G3  | Guitar G                |
+ |  59  |  B3  | Guitar B                |
+ |  64  |  E4  | Guitar E high           |
+ 
+ | MIDI | Name | Instrument String       |
+ |------|------|-------------------------|
+ |  20  | G#0  | Guitar G# low 10-string |
+ |  25  | C#1  | Guitar C# low  9-string |
+ |  30  | F#1  | Guitar F# low  8-string |
+ |  35  |  B1  | Guitar B  low  7-string |
+ 
+ | MIDI | Name | Instrument String       |
+ |------|------|-------------------------|
+ |  28  |  E1  | Bass E                  |
+ |  33  |  A1  | Bass A                  |
+ |  38  |  D2  | Bass D                  |
+ |  43  |  G2  | Bass G                  |
+ 
+ | MIDI | Name | Instrument String       |
+ |------|------|-------------------------|
+ |  23  |  B0  | Bass B low  5-string    |
+ |  48  |  C3  | Bass C high 6-string    |
+ 
+ Fret on string: if the string is not played open but a fret is
+ played on the string, maybe with a capo, then you can use this
+ slider to pick the fret that is being played. 12 is one octave
+ up, 24 is two.
+ 
+ Beneath these is a block of four DISPLAY properties, these are
+ read-only and set from inside the plugin, effectively readouts.
+ 
+ MIDI note number: tells you the MIDI note corresponding to the
+ string and fret settings you just made.
+ 
+ Note name/octave: calculate and display name and octave of the
+ note that is the result of what you set up earlier.
+ E.g. string set to E2, playing fret 13 --> F3.
+ 
+ Note frequency: this is the important one, the one this plugin
+ was made for. Calculated from the string & fret settings, this
+ will display the frequency in Hz the note would sit at, if you
+ played it on your instrument.
+ 
+ You can use this value to focus on important frequencies in an
+ equaliser, or to have a reference for your drum tuning gadget.
+ 
+ If you switch the "Listen to pitch" on, the plugin will output
+ a simple sine wave for you to tune your instruments by. It's a
+ boring sine wave, but in combination with the tuning standards
+ and the detune settings, and by not being bound to the tunings
+ someone else thought you should have, this little thing is far
+ more flexible than a common clip-on or pedal tuner.
+
+// ----------------------------------------------------------------------------
+slider1:tuningStandard=5<0,8,1{392 Hz - French Baroque pitch,415 Hz - Baroque pitch (historical),428 Hz - Experimental alternative tuning,432 Hz - Verdi tuning,435 Hz - 19th-century French standard,440 Hz - Modern international standard,442 Hz - European orchestral pitch 1,443 Hz - European orchestral pitch 2,466 Hz - High Baroque (Chorton)}>Tuning standard
+slider2:detuneCents=0<-99,99,1>Root detune [Cent]
+slider3
+slider4:stringNote=4<0,11,{C,C#,D,D#,E,F,F#,G,G#,A,A#,B}>String note name
+slider5:stringOctave=2<0,5,1{0,1,2,3,4,5}>String octave
+slider6:stringFret=0<0,30,1>Fret on string
+slider7
+slider8:playedMidi=0<12,113,1>DISPLAY: Note MIDI number
+slider9:playedNote=4<0,11,{C,C#,D,D#,E,F,F#,G,G#,A,A#,B}>DISPLAY: Note name
+slider10:playedOctave=3<0,8,1{0,1,2,3,4,5,6,7,8}>DISPLAY: Note octave
+slider11:playedHertz=0<0,5588,0.0001:log=1000>DISPLAY: Note frequency [Hz]
+slider12
+slider13:listen=0<0,1,{Off,On}>Listen to pitch
+slider14:decibels=-36<-120,0,1>Volume [dBfs]
+
+// By not having any in_pin and out_pin assignments, this plugin will
+// automatically adapt to the number of channels of the track.
+
+@init
+  
+  // Converts signed Decibels to float amplitude value
+  function dBToAmp (decibels) (pow(10, decibels * 0.05));
+  
+  // Offsets for the A4 note in various tuning standards.
+  // These are added to 440 Hz to get the actual value.
+  // Was more efficient this way than using 9+ conditionals.
+  rootFrequencyOffsets    =   0; // Array memory address
+  rootFrequencyOffsets[0] = -48; // 392 Hz - French Baroque pitch
+  rootFrequencyOffsets[1] = -25; // 415 Hz - Baroque pitch (historical)
+  rootFrequencyOffsets[2] = -12; // 428 Hz - Experimental alternative tuning
+  rootFrequencyOffsets[3] =  -8; // 432 Hz - Verdi tuning
+  rootFrequencyOffsets[4] =  -5; // 435 Hz - 19th-century French standard
+  rootFrequencyOffsets[5] =   0; // 440 Hz - MODERN INTERNATIONAL STANDARD
+  rootFrequencyOffsets[6] =   2; // 442 Hz - European orchestral pitch 1
+  rootFrequencyOffsets[7] =   3; // 443 Hz - European orchestral pitch 2
+  rootFrequencyOffsets[8] =  26; // 466 Hz - High Baroque (Chorton)
+  
+  // Calculates the root frequency for A4 using the offset values above
+  function setRootFrequency () local ()
+  (
+    440 + rootFrequencyOffsets[tuningStandard];
+  );
+  
+  // Turns the +/- Cent value into a factor that is later
+  // used to scale the calculated note frequency
+  function calculateRootDetune ()
+  (
+    2 ^ (detuneCents / 1200);
+  );
+  
+  // Calculate which MIDI note matches the string tuning and played fret
+  function calculatePlayedMidiNumber ()
+  (
+    ((stringOctave + 1) * 12) + stringNote + stringFret;
+  );
+  
+  // Calculate which note (C-D-E-F-...) the MIDI note corresponds to
+  function calculatePlayedNoteName ()
+  (
+    playedMidi % 12;
+  );
+  
+  // Calculate in which (MIDI) octave the MIDI note sits
+  function calculatePlayedNoteOctave ()
+  (
+    ((playedMidi - 1) / 12) - 1;
+  );
+  
+  // Calculate the exact frequency in Hertz the played note corresponds to.
+  // Consider that the 440 Hz root frequency may be offset, and include the
+  // Cent-based detuning factor.
+  function calculatePlayedNoteFrequency ()
+  (
+    rootFrequency * (2 ^ ((playedMidi - 69) / 12)) * rootDetune;
+  );
+  
+  // SINE WAVE OSCILLATOR
+  //
+  // Important values and memory buffers
+  twoPi = 2.0 * $PI; // Performance constant
+  oscPhase  = 10;    // Per-channel phase buffer (must be in memory after rootFrequencyOffsets)
+  oscFreq   = 0;     // Oscillator frequency
+  oscFreqHz = 0;     // Oscillator frequency in Hertz
+  oscRateHz = 0;     // Oscillator sample rate in Hertz
+  oscRootHz = 0;     // Oscillator root frequency in Hertz
+  oscDetune = 0;     // Oscillator root detune factor
+  listenState = 0;   // Flag to track previous listen state
+  //  _     _
+  // / \   / \
+  //    \_/   \_/
+  //
+  // Per-sample tick function
+  function tickSine (channel)
+  (
+    // Advance the phase for this channel
+    oscPhase[channel] += (twoPi * oscFreq);
+    
+    // Wrap phase >2π around from 0 (to keep angles inside 0°-360°)
+    oscPhase[channel] += ((oscPhase[channel] >= twoPi) * -twoPi) + ((oscPhase[channel] < 0.0) * twoPi);
+    
+    // Generate and return sine value for this channel's advanced and wrapped phase
+    sin(oscPhase[channel]);
+  );
+  
+  // If the project sample rate or the calculated note frequency change,
+  // the internal oscillator frequency value must be recalculated.
+  function checkOscFreqChange () local ()
+  (
+    (oscFreqHz != playedHertz) || (oscRateHz != srate) ?
+    (
+      oscFreqHz = playedHertz;
+      oscRateHz = srate;
+      
+      oscFreq = oscFreqHz / oscRateHz;
+    );
+  );
+  
+  // Oscillator phase (only) needs to be reset when pitch listening 
+  // was previously turned off, but is now detected as active.
+  function checkOscPhaseReset ()
+  (
+    // If the pitch listening was just turned on
+    (listenState != listen) ?
+    (
+      // Update the buffer flag
+      listenState = listen;
+      
+      // Start with channel 0
+      oscChannel=0;
+      
+      // Iterate through all available audio channels
+      while (oscChannel < num_ch)
+      (
+        // Reset the oscillator phase for this channel to 0°
+        oscPhase[oscChannel] = 0.0;
+        
+        // Increment loop counter
+        oscChannel += 1;
+      );
+    );
+  );
+
+@slider
+  
+  // Everything is connected, everything is easy to calculate,
+  // so calculate everything if even only 1 slider is moved.
+  rootFrequency = setRootFrequency();
+  rootDetune    = calculateRootDetune();
+  playedMidi    = calculatePlayedMidiNumber();
+  playedNote    = calculatePlayedNoteName();
+  playedOctave  = calculatePlayedNoteOctave();
+  playedHertz   = calculatePlayedNoteFrequency();
+  volume        = dBToAmp(decibels);
+
+@sample
+  
+  // Only if pitch listening mode is activated
+  listen ?
+  (
+    // Make sure oscillator phase is reset if needs be
+    checkOscPhaseReset();
+    
+    // Make sure the oscillator is set to the correct frequency
+    checkOscFreqChange();
+    
+    // Start with channel 0
+    channel = 0;
+    
+    // Iterate through all available audio channels
+    while (channel < num_ch)
+    (
+      // Add the generated sine wave at the desired volume level to whatever
+      // is coming into the plugin. To overwrite any incoming audio, remove 
+      // the "+" sign in the line below.
+      spl(channel) += (tickSine(channel) * volume);
+      
+      // Increment loop counter
+      channel += 1;
+    );
+  )
