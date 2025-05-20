@@ -1,5 +1,5 @@
 desc:Clipping Algorithm Comparison
-version:    1.8.3
+version:    1.8.3b
 author:     chokehold
 tags:       processing gain amplitude clipper distortion saturation
 link:       https://github.com/chkhld/jsfx/
@@ -11,89 +11,91 @@ about:
  wish, but to me it's more of an experiment, an exploration of various clipping
  algorithms, comparing what each of them do better or worse than the others.
  
- There are currently 5 included clipping algorithms:
- - traditional hard clipping 
+ There are currently 7 included clipping algorithms:
+ - traditional hard clipping (min/max based)
  - traditional soft clipping (using hyperbolic tangent)
- - my softer clipping method (using sine function)
- - my custom "loud" method (as used originally in my ClipMax VST/AU plugin)
- - my custom "loud2" method (improved over the original "loud" method)
+ - my cleaner clipping method (using sine function)
+ - my custom "Loud" method (as used originally in my old ClipMax VST2/AU plugin)
+ - my custom "Loud 2" method (improved over the original "loud" method)
+ - my custom "Louder" method (boosting lower volumes above linear)
+ - my custom quadratic interpolation method that creates a knee above and below
+   the set ceiling. This one has an additional control to set the knee width.
  
  The ceiling for every algorithm is at 0.0 dBfs. You can use the Input boost to
  drive your signal into the 0.0 dBfs ceiling, and there's an Output trim to get
- what comes out of the plugin leveled to your liking.
+ what comes out of the plugin leveled to your liking. Some of these methods use
+ a definable ceiling, some don't, so the easiest common approach was to have no
+ ceiling parameter at all.
  
  Use the "Audition" parameter to set which part of the signal you want to hear.
  - "Original" is just the plugin in bypass, not even in/out gain applied
  - "Processed" is the output of [input -> boost -> clip -> trim]
- - "Clipping difference" is effectively "what's being chopped off".
+ - "Clipping difference" is effectively "what's being chopped off"
+ - "Unclipped difference" are the parts of the signal that remain un-clipped
  
- IMPORTANT: the "Clipping difference" signal is NOT itself clipped, so it could
-            become VERY loud if a lot of signal is being clipped off the input!
-            Be careful!
+ IMPORTANT: the "Unclipped difference" signal is NOT itself clipped so it could
+            become VERY loud! Be careful!
  
  IMPORTANT: the "Clipping difference" signal can be absolute silence if you've
             selected the "Hard" algorithm and your input signal does not reach
             the 0.0 dBfs ceiling. This is correct, since below 0 dBfs there is
             no clipping yet, i.e. nothing is chopped off, i.e. no diff to hear.
  
- I've created Desmos graphs to help visualize what each algorithm does:
- https://www.desmos.com/calculator/tsv6iv58th
+ There's now a display that shows the transfer curve of the currently selected
+ clipping method on a coordinate display.
  
  Basically, to the left and right of 0, you have your input sample value. Above
- and below 0, you have the output sample value after clipping. The Linear Value 
- line is the unclipped input-to-output relation, what comes out is exactly what
- it was when it went in.
+ and below 0, you have the output sample value after clipping. The ghostly blue
+ line in the background is there for reference. For Hard Clipping, it shows the
+ linear transfer line, and for other clipping methods it shows the Hard Clipped 
+ transfer curve of min-max Hard Clipping. The red curve displays samples' input
+ (x) to output (y) relation.
  
- As a rule of thumb, the closer a clipping algorithm's curve runs to the Linear 
- Value line, the less distortion is being introduced.
+ As a rule of thumb, the closer the red curve stays to the blue reference line,
+ the less distortion is being introduced BEFORE it hits the horizontal ceiling,
+ which is hard-clipping at 0.0 dBfs, which introduces a lot of distortion. Keep
+ in mind that as the transition between the linear (unclipped) 45° line and the
+ horizontal (clipping) ceiling becomes smaller, it approaches Hard Clipping and
+ might be barely, if at all, distinguishable from it.
  
- It's worth nothing that only min/max Hard clipping and Sine clipping will ever
- reach a sample value of +/- 1 i.e. true 0.0 dBfs. All other methods constantly
- keep approaching +/- 1 i.e. 0.0 dBfs, but will never actually reach them. That
- is until the differences become so small that the data format no longer offers
- sufficient precision to keep two values apart, and the stored value "snaps" to
- the +/- 1 ceiling i.e. 0.0 dBfs for lack of distinguishable values in between.
- 
- It's also worth nothing that sample values rise and fall exponentially, so for
- every double sample value you can estimate ~ +6 dB difference, also every half
- sample value you can calculate with a ~ -6 dB difference.
- 
- For clarification, hopefully, here are some rough reference values:
-  8.0   --> +24.0 dBfs (1.0 * 8)
-  4.0   --> +12.0 dBfs (1.0 * 4)
-  2.0   --> + 6.0 dBfs (1.0 * 2)
-  1.0   -->   0.0 dBfs (1.0 * 1)
-  0.5   --> - 6.0 dBfs (1.0 / 2)
-  0.25  --> -12.0 dBfs (1.0 / 4)
-  0.125 --> -24.0 dBfs (1.0 / 8)
- 
- Why am I boring you with this..? To tell you that an input value of 0.5 on the 
- graph sits at -6 dBfs, and at a 0.25 input value, you're still only looking at
- the signal at around -12 dBfs. Meaning most of the curvature you see will only
- come into play at extremely high levels, and the much more interesting aspects
- are hidden in the ranges on the graph below 0.25. So liberally turn your mouse
- wheel to zoom in. The nether regions of the Loud & Loud2 algorithms hide quite
- a bit of an "expansive" surprise.
+ It's worth nothing that only Hard Clipping, Sine Clipping, and Quadratic Curve
+ Interpolation will ever reach a ceiling of +/- 1 i.e. true 0.0 dBfs. All other 
+ methods keep constantly approaching +/- 1 i.e. 0.0 dBfs closer and closer, but
+ will never actually reach them. That is until the difference becomes so minute
+ that the data format no longer offers sufficient precision and it can not keep
+ two sample values apart, thus the stored value "snaps" to the +/- 1 ceiling at
+ 0.0 dBfs - only for lack of distinguishable values in between.
 
 // ----------------------------------------------------------------------------
-
-slider1:gain_db=0<-24,24,0.01>Input boost [dB]
+slider1:gain_dB=0<-48,48,0.01>Input boost [dB]
 slider2
-slider3:clip_id=0<0,4,{Hard,Soft (tanh),Softer (sin),Loud (legacy),Loud2}>Clipping algorithm
-slider4:monitor=1<0,2,{Original input (bypass),Processed (clipped),Clipping difference (can become LOUD!)}>Audition
-slider5
-slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
+slider3:clip_id=0<0,6,1{Hard (min+max),Soft (tanh),Clean (sin),Loud (tanh+sinh) [legacy],Loud2 (erf+sinh),Louder (erf),Quadratic Knee (interpolation)}>Clipping algorithm
+slider4:width_dB=6<0,24,0.01:log=6>-Quadratic Knee width [dB]
+slider5:louder_boost=25<0,100,0.1:log=25>-Intensity [%]
+slider6
+slider7:monitor=1<0,3,1{Original input (bypass),Processed (clipped),Clipping difference,Unclipped difference (Can be LOUD!)}>Audition
+slider8:trim_dB=0<-24,24,0.01>Output trim [dBfs]
 
 // By not having any in_pin and out_pin assignments, this plugin will
 // automatically adapt to the number of channels of the track.
 
-@init
+@init // ----------------------------------------------------------------------
   
-  // Converts signed Decibels to float amplitude value
+  // DECIBEL AND AMPLITUDE CONVERSION -----------------------------------------
+  //
+  // Converts dB values to float amplitude values
   function dBToAmp (decibels) (pow(10, decibels * 0.05));
+  //
+  // Converts float amplitude value to signed Decibels
+  function ampTodB (amplitude) (log(max(0.0000000001, abs(amplitude))) * 8.68588963806503655302257837833210164588794011607333);
+  //
+  // ampTodB constants explained:
+  //
+  //   0.0000000001  -->  ~ -200 dBfs as float amplitude value
+  //   8.68588963806503655302257837833210164588794011607333  -->  20 / ln(10)
+  //
   
-  // ----------------------------------------------------------------------------
-  // HYPERBOLIC TANGENT APPROXIMATION
+  // HYPERBOLIC TANGENT APPROXIMATION -----------------------------------------
   //
   //  Implemented after code posted by Antto on KVR
   //  https://www.kvraudio.com/forum/viewtopic.php?p=3781279#p3781279
@@ -104,10 +106,8 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
     res = (1.0 - 1.0 / (1.0 + xa + x2 + 0.58576695 * x3 + 0.55442112 * x4 + 0.057481508 * x7));
     sign(number) * res;
   );
-  // ----------------------------------------------------------------------------
   
-  // ----------------------------------------------------------------------------
-  // HYPERBOLIC SINE FUNCTION
+  // HYPERBOLIC SINE FUNCTION -------------------------------------------------
   //
   //  Implemented after NumPy
   //  https://numpy.org/doc/stable/reference/generated/numpy.sinh.html
@@ -116,34 +116,39 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
   (
     0.5 * (exp(number) - exp(-number));
   );
-  // ----------------------------------------------------------------------------
   
-  // ----------------------------------------------------------------------------
-  // ERROR FUNCTION
+  // ERROR FUNCTION -----------------------------------------------------------
   //
   //  Implemented after Stack Overflow
   //  https://stackoverflow.com/a/457805
   //
-  function erf (x) local (polarity, a1, a2, a3, a4, a5, p, t, y)
+  function erf (x) local (polarity, absolute, a1, a2, a3, a4, a5, p, t, y)
   (
-    polarity = sign(x); x = abs(x);
-    a1 =  0.254829592; a2 = -0.284496736; a3 = 1.421413741;
-    a4 = -1.453152027; a5 =  1.061405429; p  = 0.3275911;
-    t = 1.0 / (1.0 + p * x);
-    
-    polarity * (1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * exp(- x * x));
+    (x != 0) * // To avoid DC offset - if (x==0) {return 0;}
+    (
+      polarity = sign(x);
+      absolute = abs(x);
+      
+      a1 =  0.254829592;
+      a2 = -0.284496736;
+      a3 =  1.421413741;
+      a4 = -1.453152027;
+      a5 =  1.061405429;
+      p  =  0.3275911;
+      t  =  1.0 / (1.0 + p * absolute);
+      
+      polarity * (1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * exp(-absolute * absolute));
+    );
   );
-  // ----------------------------------------------------------------------------
   
-  // HARD CLIPPING --------------------------------------------------------------
+  // HARD CLIPPING ------------------------------------------------------------
   //
   // Most basic "if above ceiling, restrict to ceiling" clamping. This is what 
   // people usually call "cold transistor distortion".
   //
   function hardClip (sample) (max(-1.0, min(1.0, sample)));
-  // ----------------------------------------------------------------------------
   
-  // SOFT CLIPPING --------------------------------------------------------------
+  // SOFT CLIPPING ------------------------------------------------------------
   //
   //  Traditional hyperbolic sine based sigmoid curve distortion. This is what 
   //  people usually call soft clipping or "warm tube saturation".
@@ -152,9 +157,8 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
   (
     tanh(sample);
   );
-  // ----------------------------------------------------------------------------
   
-  // SINE CLIPPING --------------------------------------------------------------
+  // SINE CLIPPING ------------------------------------------------------------
   //
   //  The output of the sine function is within the range [-1,+1] as long as its
   //  input stays inside the range [-1/2π,+1/2π]. This is perfect to create soft
@@ -179,20 +183,18 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
     //
     inside * sin(sample) + !inside * sign(sample);
   );
-  // ----------------------------------------------------------------------------
   
-  // LOUD CLIPPING --------------------------------------------------------------
+  // LOUD CLIPPING ------------------------------------------------------------
   //
   //  Sigmoid curve distortion that stays close to the linear signal very long.
-  //  Used in original ClipMax plugin.
+  //  Used in original VST2/AU ClipMax plugin.
   // 
   function loudClip (sample)
   (
     tanh(0.55 * sinh(1.75 * sample));
   );
-  // ----------------------------------------------------------------------------
   
-  // LOUD2 CLIPPING -------------------------------------------------------------
+  // LOUD2 CLIPPING -----------------------------------------------------------
   //
   //  Sigmoid curve distortion that stays close to the linear signal very long.
   //  Successor to the original ClipMax plugin "Loud" algorithm.
@@ -201,16 +203,284 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
   (
     erf(0.54 * sinh(1.6 * sample));
   );
-  // ----------------------------------------------------------------------------
+  
+  // LOUDER CLIPPING
+  //
+  //  Super simple, super loud. By "accelerating" the input sample the transfer
+  //  curve can be "boosted" over the linear, in contrast to most other methods 
+  //  that usually stay inside of the linear. A little bit of this is also part
+  //  of the older loud1/loud2 algorithms, but always tamed with the countering
+  //  hyperbolic sine curve again.
+  //  It's effectively like adding some static upward compression.
+  // 
+  function louderClip (sample, factor)
+  (
+    erf(sample * factor);
+  );
+  
+  // QUADRATIC INTERPOLATION CLIPPING -----------------------------------------
+  // 
+  //  Creates a soft transition from the linear curve to the hard-clipped curve,
+  //  uses quadratic interpolation to find where on the curve an input value is.
+  //  A knee width can be specified. If this width is 0 the process is equal to
+  //  regular hard-clipping. If the width is >0.0 dB then half the knee will be
+  //  assigned to below the ceiling, and the other half above. This offsets the
+  //  true ceiling to (1/2 knee) above the intentional ceiling, and effectively
+  //  scales everything down to be below the intentional ceiling again.
+  //
+  //  Below the lower knee threshold, the signal passes through.
+  //  Insie the knee, quadratic interpolation creates a soft transitional curve.
+  //  Above the higher knee threshold, 1/2 knee above intentional ceiling, hard
+  //  clipping sets in.
+  //
+  // Interpolation function implemented after StackOverflow answer:
+  // https://stackoverflow.com/a/11435243
+  //
+  // Interpolation function, returns a value between [from,to] based on position [0,1]
+  function interpolate (from, to, position)
+  (
+    from + ((to - from) * position);
+  );
+  //
+  // Quadratic Knee clipping process
+  function quadClip (sample, width, ceiling) local (polarity, decibels, kneeHalf, kneeBot, kneeTop, position)
+  (
+    // Extract some properties of the input sample
+    polarity = sign(sample);    // Polarity of input sample (-1 if negative, +1 if positive, 0 if zero)
+    decibels = ampTodB(sample); // Signed dB representation of sample's amplitude
+    
+    // Calculate some important values related to the knee range
+    kneeHalf = width_dB * 0.5;     // Half the width of the knee in dB
+    kneeBot  = ceiling - kneeHalf; // Bottom floor dBfs
+    kneeTop  = ceiling + kneeHalf; // Top ceiling dBfs
+    
+    // If the sample is below the lower knee threshold = no clipping
+    (decibels < kneeBot) ?
+    (
+      // Default return value i.e. original input sample
+      sample;
+    )
+    :
+    // If the sample is above the upper knee threshold = hard clipping
+    (decibels > kneeTop) ?
+    (
+      // Output ceiling dBfs converted to amplitude with input sample polarity
+      polarity * dBToAmp(ceiling);
+    )
+    :
+    // If the sample is inside the knee range = soft clipping
+    (
+      // Evaluate where on the line between kneeBot and kneeTop the sample value is located
+      position = (decibels - kneeBot) / width;
+      
+      // Interpolate from sample position to intermediate position on the quadratic curve,
+      // return result as amplitude value with input sample polarity re-applied.
+      polarity * dBToAmp(interpolate(interpolate(kneeBot, ceiling, position), ceiling, position));
+    );
+  );
+  
+  // UI REDRAWING -------------------------------------------------------------
+  // 
+  // Draws the black graph plot window, the grid and the curves
+  function redrawUI ()
+  local (size, offset_x, offset_y, scale, center_x, center_y, i, 
+         x, y, x_pixel, y_pixel, y_linear, y_pixel_linear, x_coord, y_coord)
+  (
+    // GRAPH PLOT WINDOW
+    // 
+    //  Displays a square black window in the middle of the available UI space.
+    //  Uses the shorter window side as the width for the square graph plot.
+    //
+    // Calculate the square size based on the smaller side
+    size = min(gfx_w, gfx_h);
+    //
+    // Find the center point in the square graph plot
+    offset_x = (gfx_w - size) * 0.5;
+    offset_y = (gfx_h - size) * 0.5;
+    //
+    // Calculate scaling factors based on the square size
+    scale    = size / 4; // Divide by 4 to get range [-2,+2]
+    center_x = offset_x + size/2;
+    center_y = offset_y + size/2;
+    //
+    // Clear background with black rectangle
+    gfx_clear = 0;
+    gfx_r = gfx_g = gfx_b = 0;
+    gfx_rect(0, 0, gfx_w, gfx_h);
+    
+    // DRAW GRID LINES AND INDICATORS
+    //
+    // Set loop iterator to begin at X input value -2
+    i = -2;
+    while (i <= 2) // Loop until reaches X input value +2
+    (
+      // Set darker gray color for grid
+      gfx_r = gfx_g = gfx_b = 0.15;
+      
+      // Vertical lines
+      x = center_x + i * scale;
+      gfx_line(x, offset_y, x, offset_y + size);
+      
+      // Horizontal lines
+      y = center_y - i * scale;
+      gfx_line(offset_x, y, offset_x + size, y);
+      
+      // Draw number indicators (skip 0 as it's at the center)
+      (i != 0) ?
+      (
+        // Set lighter gray color for text
+        gfx_r = gfx_g = gfx_b = 0.5;
+        
+        // X axis numbers
+        // Left numbers right of grid line, right numbers left of grid line
+        gfx_x = x + (i < 0 ? 5 : -12);
+        gfx_y = center_y + 5;
+        gfx_drawnumber(i, 0);
+        
+        // Y axis numbers
+        // Upper numbers below grid line, lower numbers above grid line
+        gfx_x = center_x + 5;
+        gfx_y = y + (i > 0 ? 6 : -15);
+        gfx_drawnumber(i, 0);
+      );
+      
+      // Increment loop counter for next X 
+      i += 1;
+    );
+    
+    // DRAW X/Y AXES
+    //
+    // Set dark gray color for grid
+    gfx_r = gfx_g = gfx_b = 0.25;
+    //
+    // Draw X axis
+    gfx_line(offset_x, center_y, offset_x + size, center_y);
+    //
+    // Draw Y axis
+    gfx_line(center_x, offset_y, center_x, offset_y + size);
+    
+    // TRANSFER CURVE DRAWING
+    //
+    //  Projects the transfer curve of the currently selected clipping algorithm
+    //  onto the square graph plot area. Displays faint hard-clip transfer curve
+    //  as reference if other non hard-clip algorithms are selected.
+    //
+    // Loop through each x pixel in the graph area
+    x_pixel = 0;
+    while (x_pixel < size)
+    (
+      // Convert pixel position to coordinate space (-2 to +2)
+      x_coord = (x_pixel / size) * 4 - 2;
+      
+      // BACKGROUND REFERENCE
+      //
+      //  Draws a faint trace in the background for reference. Shows the linear
+      //  transfer line when Hard Clipping is active, draws hard-clipped linear
+      //  transfer curve for all other clipping methods.
+      //
+      // Calculate Y output value for current X input
+      y_linear = (clip_id == 0) ? x_coord : hardClip(x_coord);
+      // 
+      // Convert Y coordinate back to pixel space
+      y_pixel_linear = ((y_linear + 2) / 4) * size;
+      //
+      // Draw the pixel at the correct position (offset from center of window)
+      gfx_x = x_pixel + offset_x;
+      gfx_y = size - y_pixel_linear + offset_y;  // Flip Y axis since pixel space is top-down
+      //
+      // Paint the pixel
+      gfx_setpixel(0,0.35,0.35);
+      
+      // CLIPPING CURVE DISPLAY
+      //
+      //  Draws a different curve depending on the selected clipping algorithm.
+      //  Calculates the Y positions by sending X through clipping functions.
+      //
+      // Hard (min+max)
+      (clip_id == 0) ? (y_coord = hardClip(x_coord))
+      :
+      // Soft (tanh)
+      (clip_id == 1) ? (y_coord = softClip(x_coord))
+      :
+      // Softer (sin)
+      (clip_id == 2) ? (y_coord = sineClip(x_coord))
+      :
+      // Loud (tanh+sinh)
+      (clip_id == 3) ? (y_coord = loudClip(x_coord))
+      :
+      // Loud2 (erf+sinh)
+      (clip_id == 4) ? (y_coord = loudClip2(x_coord))
+      :
+      // Louder (erf)
+      (clip_id == 5) ? (y_coord = louderClip(x_coord, louder_factor))
+      :
+      // Quadratic Knee (interpolation)
+      (clip_id == 6) ? (y_coord = quadClip(x_coord, width_dB, 0));
+      //
+      // Convert Y coordinate back to pixel space
+      y_pixel = ((y_coord + 2) / 4) * size;
+      //
+      // Draw the pixel at the correct position (offset from center of window)
+      gfx_x = x_pixel + offset_x;
+      gfx_y = size - y_pixel + offset_y;  // Flip Y axis since pixel space is top-down
+      // 
+      // Paint the pixel in red
+      gfx_setpixel(1,0,0);
+      
+      gfx_y = size - y_pixel + offset_y - 1;  // Flip Y axis since pixel space is top-down
+      gfx_setpixel(1,0,0);
+      
+      // Advance to next X axis pixel
+      x_pixel += 1;
+    );
+  );
+  
+  // STATE BUFFER VARIABLES ---------------------------------------------------
+  //
+  // Keep track of changes that require the UI to be redrawn
+  lastClipID    = -1;
+  lastLouder    = -1;
+  lastQuadKnee  = -1;
+  lastWidth     = -1;
+  lastHeight    = -1;
+  uiNeedsRedraw =  1;
 
-@slider
+@slider // --------------------------------------------------------------------
   
   // Turn slider dB/dBfs values into amplitudes
-  gain = dBToAmp(gain_db);
-  trim = dBToAmp(trim_db);
-
-@sample
+  gain = dBToAmp(gain_dB);  // Input boost/gain
+  trim = dBToAmp(trim_dB);  // Output trim
+  comp = dBToAmp(-gain_dB); // Input boost compensation (for difference monitoring)
   
+  // Louder Clipping allows a boost factor parameter, other clipping methods don't.
+  slider_show(louder_boost, (clip_id == 5));
+  
+  // Boost factor for the Louder Clipping algorithm.
+  // Ranges from 1/4π to ~2 = 0.6366197724π = (0.25+0.3866197724)π.
+  louder_factor = $pi * (0.25 + louder_boost * 0.003866197724);
+  
+  // Quad Knee clipping requires a floor parameter, other clipping methods don't.
+  slider_show(width_dB, (clip_id == 6));
+  
+  // Keep track if slider changes require a UI redraw
+  uiNeedsRedraw |= (lastClipID   != clip_id);
+  uiNeedsRedraw |= (lastQuadKnee != width_dB);
+  
+  (lastLouder != louder_boost) ? (uiNeedsRedraw = 1);
+  (lastSeventh != seventh_dir) ? (uiNeedsRedraw = 1);
+  
+@sample // --------------------------------------------------------------------
+  
+  // Louder Clipping allows a floor parameter, other clipping methods don't.
+  // Not reliable enough to do this only in @slider, sadly.
+  slider_show(louder_boost, (clip_id == 5));
+  
+  // Quad Knee Clipping requires a floor parameter, other clipping methods don't.
+  // Not reliable enough to do this only in @slider, sadly.
+  slider_show(width_dB, (clip_id == 6));
+  
+  // SAMPLE PROCESSING --------------------------------------------------------
+  //
   // Only process if not bypassed
   monitor > 0 ?
   (
@@ -223,37 +493,40 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
       // Fetch the channel's sample and apply input gain
       channelSample = spl(channel) * gain;
       
-      // Hard
-      (clip_id == 0) ?
-      (
-        channelClipped = hardClip(channelSample);
-      )
-      : // Soft (tanh)
-      (clip_id == 1) ?
-      (
-        channelClipped = softClip(channelSample);
-      )
-      : // Softer (sin)
-      (clip_id == 2) ?
-      (
-        channelClipped = sineClip(channelSample);
-      )
-      : // Loud
-      (clip_id == 3) ?
-      (
-        channelClipped = loudClip(channelSample);
-      )
-      : // Loud2
-      (clip_id == 4) ?
-      (
-        channelClipped = loudClip2(channelSample);
-      );
+      // Hard (min+max)
+      (clip_id == 0) ? (channelClipped = hardClip(channelSample))
+      :
+      // Soft (tanh)
+      (clip_id == 1) ? (channelClipped = softClip(channelSample))
+      :
+      // Softer (sin)
+      (clip_id == 2) ? (channelClipped = sineClip(channelSample))
+      :
+      // Loud (tanh+sinh)
+      (clip_id == 3) ? (channelClipped = loudClip(channelSample))
+      :
+      // Loud2 (erf+sinh)
+      (clip_id == 4) ? (channelClipped = loudClip2(channelSample))
+      :
+      // Louder (erf)
+      (clip_id == 5) ? (channelClipped = louderClip(channelSample, louder_factor))
+      :
+      // Quadratic Knee (interpolation)
+      (clip_id == 6) ? (channelClipped = quadClip(channelSample, width_dB, 0.0));
       
       // If the removed signal i.e. difference should be auditioned
       (monitor == 2) ?
       (
         // Subtract processed sample from original input sample
-        channelClipped = channelSample - channelClipped;
+        channelClipped = (channelSample - channelClipped) * comp;
+      )
+      :
+      // If the un-clipped parts of the signal should be auditioned
+      (monitor == 3) ?
+      (
+        // Set default output to silence, only add input channelSample if identical 
+        // to clipped output i.e. no clipping occurred.
+        channelClipped = 0.0 + (channelClipped == channelSample) * channelSample;
       );
       
       // Apply output gain and write processed signal to output sample
@@ -264,3 +537,25 @@ slider6:trim_db=0<-24,24,0.01>Output trim [dBfs]
     );
   );
   
+@gfx 400 400 // ---------------------------------------------------------------
+  
+  // Check if the UI dimensions have changed
+  uiNeedsRedraw |= (lastWidth  != gfx_w);
+  uiNeedsRedraw |= (lastHeight != gfx_h);
+  
+  // If the UI needs to be redrawn
+  uiNeedsRedraw ? 
+  (
+    // Let the UI be redrawn
+    redrawUI();
+    
+    // Update the state buffer variables
+    lastWidth  = gfx_w;
+    lastHeight = gfx_h;
+    lastClipID = clip_id;
+    lastLouder = louder_boost;
+    lastQuadKnee = width_dB;
+    
+    // Reset "needs redraw" flag
+    uiNeedsRedraw = 0;
+  );
