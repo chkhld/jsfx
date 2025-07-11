@@ -333,7 +333,7 @@ out_pin:none
           gfx_x = gfx_w - stepOffset;
           gfx_y = centerY;
           
-          scaling == 0 ? sampleL = normalize(-144, 0, gainTodB(sampleL), -48);
+          scaling == 0 ? sampleL = normalise(-144, 0, gainTodB(sampleL), -48);
           
           // Draw line upwards with length scaled by sample value
           gfx_lineto(gfx_x, centerY - scale * sampleL, 1);
@@ -391,7 +391,7 @@ out_pin:none
           gfx_x = gfx_w - stepOffset;
           gfx_y = centerY;
           
-          scaling == 0 ? sampleR = normalize(-144, 0, gainTodB(sampleR), -48);
+          scaling == 0 ? sampleR = normalise(-144, 0, gainTodB(sampleR), -48);
           
           // Draw line downwards with length scaled by sample value
           gfx_lineto(gfx_x, centerY + scale * sampleR, 1);
